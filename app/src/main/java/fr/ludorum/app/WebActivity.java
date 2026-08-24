@@ -1,0 +1,915 @@
+package fr.ludorum.app;
+
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
+import android.graphics.Color;
+import android.net.Uri;
+import android.os.Bundle;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.webkit.CookieManager;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import java.io.ByteArrayInputStream;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+
+public class WebActivity extends Activity {
+    static final String EXTRA_URL = "url";
+    static final String EXTRA_TITLE = "title";
+
+    private static final String BASE = "https://ludorum.fr";
+    private static final String ACCOUNT = BASE + "/mon-compte/";
+    private static final String FAVORITES = BASE + "/favoris/";
+    private static final String CART = BASE + "/panier/";
+
+    private WebView web;
+    private ProgressBar progress;
+    private TextView title;
+
+    private String initialUrl = BASE;
+    private boolean cartMode = false;
+    private boolean accountMode = false;
+    private String appScriptCache;
+
+    private LinearLayout navHome;
+    private LinearLayout navAccount;
+    private LinearLayout navFavorites;
+    private LinearLayout navCart;
+
+    @Override
+    protected void onCreate(Bundle state) {
+        super.onCreate(state);
+        try {
+            boot(state);
+        } catch (Exception error) {
+            showStartupError(error);
+        }
+    }
+
+    private void boot(Bundle state) {
+        configureSystemBars();
+        build();
+
+        String url = getIntent().getStringExtra(EXTRA_URL);
+        String requestedTitle = getIntent().getStringExtra(EXTRA_TITLE);
+
+        initialUrl = url == null ? BASE : url;
+        String initialLower =
+                initialUrl.toLowerCase(java.util.Locale.ROOT);
+
+        cartMode =
+                initialLower.contains("/panier") ||
+                initialLower.contains("/cart");
+
+        accountMode =
+                initialLower.contains("/mon-compte");
+
+        title.setText(
+                requestedTitle == null ? "Ludorum" : requestedTitle
+        );
+
+        if (state != null) {
+            web.restoreState(state);
+        } else {
+            web.loadUrl(url == null ? BASE : url);
+        }
+    }
+
+    private void configureSystemBars() {
+        getWindow().setStatusBarColor(Color.WHITE);
+        getWindow().setNavigationBarColor(Ui.NAVY);
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        );
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private void build() {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Color.WHITE);
+        root.setPadding(
+                0,
+                Ui.topSystemSpace(this),
+                0,
+                0
+        );
+
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.setPadding(
+                Ui.dp(this, 8),
+                Ui.dp(this, 6),
+                Ui.dp(this, 10),
+                Ui.dp(this, 6)
+        );
+        top.setBackgroundColor(Color.WHITE);
+        top.setElevation(Ui.dp(this, 3));
+
+        ImageView back = new ImageView(this);
+        back.setImageResource(R.drawable.ic_back);
+        back.setColorFilter(Ui.NAVY);
+        back.setPadding(
+                Ui.dp(this, 8),
+                Ui.dp(this, 8),
+                Ui.dp(this, 8),
+                Ui.dp(this, 8)
+        );
+        back.setOnClickListener(view -> onBackPressed());
+
+        top.addView(
+                back,
+                new LinearLayout.LayoutParams(
+                        Ui.dp(this, 46),
+                        Ui.dp(this, 46)
+                )
+        );
+
+        title =
+                Ui.text(
+                        this,
+                        "Ludorum",
+                        17,
+                        Ui.NAVY,
+                        true
+                );
+        title.setGravity(Gravity.CENTER_VERTICAL);
+
+        top.addView(
+                title,
+                new LinearLayout.LayoutParams(
+                        0,
+                        Ui.dp(this, 46),
+                        1f
+                )
+        );
+
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.ludorum_logo);
+        logo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+
+        top.addView(
+                logo,
+                new LinearLayout.LayoutParams(
+                        Ui.dp(this, 100),
+                        Ui.dp(this, 44)
+                )
+        );
+
+        root.addView(top);
+
+        progress =
+                new ProgressBar(
+                        this,
+                        null,
+                        android.R.attr.progressBarStyleHorizontal
+                );
+        progress.setMax(100);
+
+        root.addView(
+                progress,
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Ui.dp(this, 2)
+                )
+        );
+
+        web = new WebView(this);
+        WebSettings settings = web.getSettings();
+
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setLoadsImagesAutomatically(true);
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
+        settings.setMixedContentMode(
+                WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        );
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        settings.setSupportMultipleWindows(true);
+
+        // Fluidité WebView.
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setUseWideViewPort(true);
+        settings.setLoadWithOverviewMode(false);
+        settings.setSupportZoom(false);
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
+        settings.setMediaPlaybackRequiresUserGesture(true);
+        settings.setOffscreenPreRaster(true);
+
+        web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        web.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        web.setVerticalScrollBarEnabled(false);
+        web.setHorizontalScrollBarEnabled(false);
+        web.setScrollbarFadingEnabled(true);
+
+        // Le geste vertical appartient au WebView.
+        web.setOnTouchListener((v, event) -> {
+            try {
+                android.view.ViewParent parent = v.getParent();
+                if (parent != null) {
+                    parent.requestDisallowInterceptTouchEvent(true);
+                }
+            } catch (Exception ignored) {}
+            return false;
+        });
+
+        settings.setUserAgentString(
+                settings.getUserAgentString() +
+                " LudorumAndroid/1.0.0"
+        );
+
+        CookieManager cookies = CookieManager.getInstance();
+        cookies.setAcceptCookie(true);
+        cookies.setAcceptThirdPartyCookies(web, true);
+
+        web.setWebViewClient(new Client());
+        web.setWebChromeClient(new Chrome());
+
+        root.addView(
+                web,
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        0,
+                        1f
+                )
+        );
+
+        View bottomHost = bottomNavHost();
+
+        root.addView(
+                bottomHost,
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Ui.dp(this, 70) +
+                        Ui.bottomSystemSpace(this)
+                )
+        );
+
+        setContentView(root);
+    }
+
+    private View bottomNavHost() {
+        FrameLayout host = new FrameLayout(this);
+        host.setBackgroundColor(Ui.NAVY);
+
+        View nav = bottomNav();
+
+        FrameLayout.LayoutParams navParams =
+                new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Ui.dp(this, 70),
+                        Gravity.TOP
+                );
+
+        host.addView(nav, navParams);
+        return host;
+    }
+
+    private View bottomNav() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setPadding(
+                Ui.dp(this, 7),
+                Ui.dp(this, 5),
+                Ui.dp(this, 7),
+                Ui.dp(this, 5)
+        );
+        bar.setBackground(
+                Ui.roundedStroke(
+                        Color.WHITE,
+                        Ui.BORDER,
+                        1,
+                        0,
+                        this
+                )
+        );
+
+        navHome =
+                Ui.navItem(
+                        this,
+                        R.drawable.ic_home,
+                        "Accueil",
+                        false
+                );
+        navAccount =
+                Ui.navItem(
+                        this,
+                        R.drawable.ic_person,
+                        "Compte",
+                        false
+                );
+        navFavorites =
+                Ui.navItem(
+                        this,
+                        R.drawable.ic_heart,
+                        "Favoris",
+                        false
+                );
+        navCart =
+                Ui.navItem(
+                        this,
+                        R.drawable.ic_cart,
+                        "Panier",
+                        false
+                );
+
+        navHome.setOnClickListener(view -> {
+            Intent intent =
+                    new Intent(this, MainActivity.class);
+            intent.addFlags(
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP |
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            );
+            startActivity(intent);
+            finish();
+        });
+
+        navAccount.setOnClickListener(view -> {
+            // Changement explicite de contexte : Compte ne doit pas hériter
+            // d'un ancien mode Panier.
+            cartMode = false;
+            accountMode = true;
+            title.setText("Mon compte");
+            web.loadUrl(ACCOUNT);
+        });
+
+        navFavorites.setOnClickListener(view -> {
+            Intent intent =
+                    new Intent(this, MainActivity.class);
+            intent.putExtra("screen", "favorites");
+            intent.addFlags(
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP |
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            );
+            startActivity(intent);
+            finish();
+        });
+
+        navCart.setOnClickListener(view -> {
+            // Changement explicite de contexte : Panier ne doit pas hériter
+            // d'un ancien mode Compte.
+            accountMode = false;
+            cartMode = true;
+            title.setText("Panier");
+            web.loadUrl(CART);
+        });
+
+        LinearLayout[] items =
+                new LinearLayout[]{
+                        navHome,
+                        navAccount,
+                        navFavorites,
+                        navCart
+                };
+
+        for (LinearLayout item : items) {
+            bar.addView(
+                    item,
+                    new LinearLayout.LayoutParams(
+                            0,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            1f
+                    )
+            );
+        }
+
+        return bar;
+    }
+
+    private void updateBottomNav(String url) {
+        String value =
+                url == null
+                        ? ""
+                        : url.toLowerCase(java.util.Locale.ROOT);
+
+        Ui.setNavActive(navHome, false);
+        Ui.setNavActive(
+                navAccount,
+                value.contains("/mon-compte")
+        );
+        Ui.setNavActive(
+                navFavorites,
+                value.contains("/favoris")
+        );
+        Ui.setNavActive(
+                navCart,
+                value.contains("/panier") ||
+                value.contains("/commande")
+        );
+    }
+
+    private void applyAppPolish(WebView view) {
+        try {
+            if (appScriptCache == null) {
+                StringBuilder script = new StringBuilder();
+
+                try (BufferedReader reader =
+                             new BufferedReader(
+                                     new InputStreamReader(
+                                             getAssets().open("ludorum_app.js"),
+                                             StandardCharsets.UTF_8
+                                     )
+                             )) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        script.append(line).append('\n');
+                    }
+                }
+
+                appScriptCache = script.toString();
+            }
+
+            view.evaluateJavascript(appScriptCache, null);
+        } catch (Exception error) {
+            Toast.makeText(
+                    this,
+                    "Interface Ludorum : " + error.getClass().getSimpleName(),
+                    Toast.LENGTH_SHORT
+            ).show();
+        }
+    }
+
+    private void updateJourneyMode(
+            String url
+    ) {
+        Uri uri = null;
+
+        try {
+            uri = Uri.parse(url);
+        } catch (Exception ignored) {}
+
+        if (uri == null ||
+                !isLudorumHost(uri)) {
+            return;
+        }
+
+        String path =
+                pathOf(uri);
+
+        String query =
+                uri.getQuery() == null
+                        ? ""
+                        : uri.getQuery()
+                                .toLowerCase(
+                                        java.util.Locale.ROOT
+                                );
+
+        if (path.contains("/panier")
+                || path.contains("/cart")
+                || path.contains("/commande")
+                || path.contains("/checkout")
+                || path.contains("/order-pay")
+                || path.contains("/order-received")
+                || query.contains("wc-ajax=checkout")
+                || query.contains("wc-api=")) {
+            cartMode = true;
+        }
+
+        if (path.contains("/mon-compte")) {
+            accountMode = true;
+        }
+    }
+
+    private boolean isLudorumHost(Uri uri) {
+        if (uri == null || uri.getHost() == null) return false;
+
+        String host =
+                uri.getHost()
+                        .toLowerCase(java.util.Locale.ROOT);
+
+        return host.equals("ludorum.fr") ||
+                host.equals("www.ludorum.fr");
+    }
+
+    private String pathOf(Uri uri) {
+        if (uri == null || uri.getPath() == null) return "/";
+        return uri.getPath().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private boolean isCartAllowed(
+            Uri uri
+    ) {
+        if (!isLudorumHost(uri)) {
+            return true;
+        }
+
+        String path =
+                pathOf(uri);
+
+        String query =
+                uri.getQuery() == null
+                        ? ""
+                        : uri.getQuery()
+                                .toLowerCase(
+                                        java.util.Locale.ROOT
+                                );
+
+        return path.contains("/panier")
+                || path.contains("/cart")
+                || path.contains("/commande")
+                || path.contains("/checkout")
+                || path.contains("/order-pay")
+                || path.contains("/order-received")
+                || path.contains("/mon-compte")
+                || query.contains("wc-api=")
+                || query.contains("wc-ajax=checkout")
+                || query.contains("pay_for_order=")
+                || query.contains("key=wc_order_");
+    }
+
+    private boolean isAccountAllowed(Uri uri) {
+        if (!isLudorumHost(uri)) return true;
+
+        String path = pathOf(uri);
+
+        return path.contains("/mon-compte")
+                || path.contains("/commande")
+                || path.contains("/order-pay")
+                || path.contains("/order-received");
+    }
+
+    private boolean looksLikeTechnicalShop(Uri uri) {
+        if (!isLudorumHost(uri)) return false;
+
+        String value =
+                uri.toString()
+                        .toLowerCase(java.util.Locale.ROOT);
+
+        return value.contains("catalogue-woocommerce")
+                || value.contains("woocommerce-technique")
+                || value.contains("boutique-technique")
+                || value.contains("/shop/")
+                || value.contains("/shop?")
+                || value.contains("post_type=product");
+    }
+
+    private void returnToNativeHome() {
+        Intent intent =
+                new Intent(this, MainActivity.class);
+
+        intent.addFlags(
+                Intent.FLAG_ACTIVITY_CLEAR_TOP |
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
+        );
+
+        startActivity(intent);
+        finish();
+    }
+
+    private boolean handle(Uri uri) {
+        if (uri == null || uri.getScheme() == null) return false;
+
+        String scheme = uri.getScheme().toLowerCase();
+
+        if (scheme.equals("http") || scheme.equals("https")) {
+            // Le Panier n'est pas une mini-boutique WordPress.
+            // Il ne peut naviguer que vers le panier, le compte et le checkout.
+            if (cartMode && isLudorumHost(uri) && !isCartAllowed(uri)) {
+                returnToNativeHome();
+                return true;
+            }
+
+            // Même principe pour Mon compte : pas de fuite vers la boutique technique.
+            if (accountMode &&
+                    isLudorumHost(uri) &&
+                    !isAccountAllowed(uri)) {
+                returnToNativeHome();
+                return true;
+            }
+
+            // Sécurité globale : la page technique ne doit jamais apparaître dans l'app.
+            if (looksLikeTechnicalShop(uri)) {
+                returnToNativeHome();
+                return true;
+            }
+
+            return false;
+        }
+
+        if (scheme.equals("intent")) {
+            try {
+                Intent intent =
+                        Intent.parseUri(
+                                uri.toString(),
+                                Intent.URI_INTENT_SCHEME
+                        );
+
+                if (intent.resolveActivity(getPackageManager()) != null) {
+                    startActivity(intent);
+                    return true;
+                }
+
+                String fallback =
+                        intent.getStringExtra("browser_fallback_url");
+
+                if (fallback != null &&
+                        fallback.startsWith("https://")) {
+                    web.loadUrl(fallback);
+                }
+            } catch (Exception ignored) {}
+            return true;
+        }
+
+        if (scheme.equals("mailto") ||
+                scheme.equals("tel") ||
+                scheme.equals("sms") ||
+                scheme.equals("geo") ||
+                scheme.equals("market")) {
+
+            try {
+                startActivity(
+                        new Intent(Intent.ACTION_VIEW, uri)
+                );
+            } catch (ActivityNotFoundException error) {
+                Toast.makeText(
+                        this,
+                        "Aucune application compatible.",
+                        Toast.LENGTH_SHORT
+                ).show();
+            }
+            return true;
+        }
+
+        return true;
+    }
+
+    private final class Client extends WebViewClient {
+        @Override
+        public WebResourceResponse shouldInterceptRequest(
+                WebView view,
+                WebResourceRequest request
+        ) {
+            Uri uri = request != null ? request.getUrl() : null;
+            String host = uri != null && uri.getHost() != null
+                    ? uri.getHost().toLowerCase(java.util.Locale.ROOT)
+                    : "";
+
+            // On ne bloque jamais WooCommerce, Stripe, PayPal ni ludorum.fr.
+            // Seulement les trackers/pixels non essentiels dans l'application.
+            if (host.contains("googletagmanager.com")
+                    || host.contains("google-analytics.com")
+                    || host.contains("doubleclick.net")
+                    || host.contains("connect.facebook.net")
+                    || host.contains("facebook.com/tr")
+                    || host.contains("analytics.tiktok.com")
+                    || host.contains("clarity.ms")
+                    || host.contains("bat.bing.com")) {
+                return new WebResourceResponse(
+                        "text/plain",
+                        "UTF-8",
+                        new ByteArrayInputStream(
+                                new byte[0]
+                        )
+                );
+            }
+            return super.shouldInterceptRequest(view, request);
+        }
+
+        @Override
+        public boolean shouldOverrideUrlLoading(
+                WebView view,
+                WebResourceRequest request
+        ) {
+            return handle(request.getUrl());
+        }
+
+        @Override
+        public boolean shouldOverrideUrlLoading(
+                WebView view,
+                String url
+        ) {
+            return handle(Uri.parse(url));
+        }
+
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            CookieManager.getInstance().flush();
+            progress.setVisibility(View.GONE);
+
+            Uri current = null;
+            try {
+                current = Uri.parse(url);
+            } catch (Exception ignored) {}
+
+            if ((cartMode && current != null && !isCartAllowed(current))
+                    || (accountMode && current != null && !isAccountAllowed(current))
+                    || (current != null && looksLikeTechnicalShop(current))) {
+                returnToNativeHome();
+                return;
+            }
+
+            updateJourneyMode(url);
+            updateBottomNav(url);
+            applyAppPolish(view);
+            super.onPageFinished(view, url);
+        }
+    }
+
+    private final class Chrome extends WebChromeClient {
+        @Override
+        public void onProgressChanged(
+                WebView view,
+                int newProgress
+        ) {
+            progress.setVisibility(
+                    newProgress >= 100
+                            ? View.GONE
+                            : View.VISIBLE
+            );
+            progress.setProgress(newProgress);
+        }
+
+        @Override
+        public boolean onCreateWindow(
+                WebView view,
+                boolean dialog,
+                boolean gesture,
+                android.os.Message message
+        ) {
+            WebView popup = new WebView(WebActivity.this);
+            WebSettings popupSettings = popup.getSettings();
+            popupSettings.setJavaScriptEnabled(true);
+            popupSettings.setDomStorageEnabled(true);
+            popupSettings.setJavaScriptCanOpenWindowsAutomatically(true);
+            CookieManager.getInstance().setAcceptThirdPartyCookies(popup, true);
+
+            popup.setWebViewClient(
+                    new WebViewClient() {
+                        @Override
+                        public boolean shouldOverrideUrlLoading(
+                                WebView popupView,
+                                WebResourceRequest request
+                        ) {
+                            Uri uri = request.getUrl();
+
+                            if ("http".equalsIgnoreCase(uri.getScheme()) ||
+                                    "https".equalsIgnoreCase(uri.getScheme())) {
+                                if (!handle(uri)) {
+                                    web.loadUrl(
+                                            uri.toString()
+                                    );
+                                }
+                            } else {
+                                handle(uri);
+                            }
+
+                            popupView.destroy();
+                            return true;
+                        }
+
+                        @Override
+                        public boolean shouldOverrideUrlLoading(
+                                WebView popupView,
+                                String url
+                        ) {
+                            Uri uri = Uri.parse(url);
+
+                            if ("http".equalsIgnoreCase(uri.getScheme()) ||
+                                    "https".equalsIgnoreCase(uri.getScheme())) {
+                                if (!handle(uri)) {
+                                    web.loadUrl(url);
+                                }
+                            } else {
+                                handle(uri);
+                            }
+
+                            popupView.destroy();
+                            return true;
+                        }
+                    }
+            );
+
+            WebView.WebViewTransport transport =
+                    (WebView.WebViewTransport) message.obj;
+
+            transport.setWebView(popup);
+            message.sendToTarget();
+            return true;
+        }
+    }
+
+    private void showStartupError(Exception error) {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setGravity(Gravity.CENTER);
+        page.setPadding(
+                Ui.dp(this, 24),
+                Ui.topSystemSpace(this) + Ui.dp(this, 24),
+                Ui.dp(this, 24),
+                Ui.bottomSystemSpace(this) + Ui.dp(this, 24)
+        );
+        page.setBackgroundColor(Color.WHITE);
+
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.ludorum_logo);
+        logo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+
+        page.addView(
+                logo,
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Ui.dp(this, 72)
+                )
+        );
+
+        TextView titleView =
+                Ui.text(
+                        this,
+                        "Impossible d’ouvrir cette page Ludorum.",
+                        20,
+                        Ui.NAVY,
+                        true
+                );
+        titleView.setGravity(Gravity.CENTER);
+
+        LinearLayout.LayoutParams titleParams =
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                );
+        titleParams.topMargin = Ui.dp(this, 20);
+        page.addView(titleView, titleParams);
+
+        TextView technical =
+                Ui.text(
+                        this,
+                        error.getClass().getSimpleName() +
+                                ": " +
+                                String.valueOf(error.getMessage()),
+                        11,
+                        Ui.RED,
+                        false
+                );
+        technical.setGravity(Gravity.CENTER);
+
+        LinearLayout.LayoutParams technicalParams =
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                );
+        technicalParams.topMargin = Ui.dp(this, 14);
+        page.addView(technical, technicalParams);
+
+        setContentView(page);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (web != null && web.canGoBack()) {
+            web.goBack();
+        } else {
+            finish();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        CookieManager.getInstance().flush();
+        if (web != null) web.onPause();
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (web != null) web.onResume();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle out) {
+        if (web != null) web.saveState(out);
+        super.onSaveInstanceState(out);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (web != null) {
+            web.stopLoading();
+            web.setWebChromeClient(null);
+            web.setWebViewClient(null);
+            web.destroy();
+            web = null;
+        }
+        super.onDestroy();
+    }
+}
