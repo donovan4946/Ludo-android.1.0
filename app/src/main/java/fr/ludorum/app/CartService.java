@@ -174,10 +174,10 @@ final class CartService {
                     }
                 }
 
-                String finalToken =
-                        after.cartToken;
+                final int finalItemsCount =
+                        after.itemsCount;
 
-                List<String> setCookies =
+                final List<String> setCookies =
                         after.setCookies;
 
                 MAIN.post(() -> {
@@ -194,7 +194,7 @@ final class CartService {
                     invalidateAmountCache();
 
                     callback.onSuccess(
-                            after.itemsCount
+                            finalItemsCount
                     );
                 });
 
@@ -308,7 +308,7 @@ final class CartService {
             );
             connection.setRequestProperty(
                     "User-Agent",
-                    "LudorumAndroid/1.0.12"
+                    "LudorumAndroid/1.0.13"
             );
 
             if (cookies != null &&
@@ -455,7 +455,7 @@ final class CartService {
             );
             connection.setRequestProperty(
                     "User-Agent",
-                    "LudorumAndroid/1.0.12"
+                    "LudorumAndroid/1.0.13"
             );
 
             if (cookies != null &&
@@ -665,7 +665,7 @@ final class CartService {
                 );
                 connection.setRequestProperty(
                         "User-Agent",
-                        "LudorumAndroid/1.0.12"
+                        "LudorumAndroid/1.0.13"
                 );
 
                 if (cookies != null &&
@@ -790,7 +790,7 @@ final class CartService {
             connection.setReadTimeout(12000);
             connection.setRequestMethod("GET");
             connection.setRequestProperty("Accept", "application/json");
-            connection.setRequestProperty("User-Agent", "LudorumAndroid/1.0.12");
+            connection.setRequestProperty("User-Agent", "LudorumAndroid/1.0.13");
 
             if (cookies != null &&
                     !cookies.trim().isEmpty()) {
