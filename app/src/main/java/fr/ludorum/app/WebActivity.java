@@ -50,6 +50,9 @@ public class WebActivity extends Activity {
     private boolean allowProductPage = false;
     private String appScriptCache;
 
+    private long lastPolishAt = 0L;
+    private String lastPolishUrl = "";
+
     private LinearLayout navHome;
     private LinearLayout navAccount;
     private LinearLayout navFavorites;
@@ -255,7 +258,7 @@ public class WebActivity extends Activity {
 
         settings.setUserAgentString(
                 settings.getUserAgentString() +
-                " LudorumAndroid/1.0.8"
+                " LudorumAndroid/1.0.11"
         );
 
         CookieManager cookies = CookieManager.getInstance();
@@ -388,43 +391,67 @@ public class WebActivity extends Activity {
                 );
 
         navHome.setOnClickListener(view -> {
-            Intent intent =
-                    new Intent(this, MainActivity.class);
-            intent.addFlags(
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP |
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            openNativeScreen(
+                    "home",
+                    null,
+                    null
             );
-            startActivity(intent);
-            finish();
         });
 
         navAccount.setOnClickListener(view -> {
-            // Changement explicite de contexte : Compte ne doit pas hériter
-            // d'un ancien mode Panier.
+            if (isCurrentLudorumPath(
+                    "/mon-compte"
+            )) {
+                web.scrollTo(
+                        0,
+                        0
+                );
+
+                updateBottomNav(
+                        web.getUrl()
+                );
+                return;
+            }
+
+            web.stopLoading();
             cartMode = false;
             accountMode = true;
             title.setText("Mon compte");
+            progress.setProgress(0);
+            progress.setVisibility(View.VISIBLE);
             web.loadUrl(ACCOUNT);
         });
 
         navFavorites.setOnClickListener(view -> {
-            Intent intent =
-                    new Intent(this, MainActivity.class);
-            intent.putExtra("screen", "favorites");
-            intent.addFlags(
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP |
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            openNativeScreen(
+                    "favorites",
+                    null,
+                    null
             );
-            startActivity(intent);
-            finish();
         });
 
         navCart.setOnClickListener(view -> {
-            // Changement explicite de contexte : Panier ne doit pas hériter
-            // d'un ancien mode Compte.
+            if (isCurrentLudorumPath(
+                    "/panier",
+                    "/cart"
+            )) {
+                web.scrollTo(
+                        0,
+                        0
+                );
+
+                updateBottomNav(
+                        web.getUrl()
+                );
+                return;
+            }
+
+            web.stopLoading();
             accountMode = false;
             cartMode = true;
             title.setText("Panier");
+            progress.setProgress(0);
+            progress.setVisibility(View.VISIBLE);
             web.loadUrl(CART);
         });
 
@@ -448,6 +475,50 @@ public class WebActivity extends Activity {
         }
 
         return bar;
+    }
+
+    private boolean isCurrentLudorumPath(
+            String... pathParts
+    ) {
+        if (web == null ||
+                pathParts == null ||
+                pathParts.length == 0) {
+            return false;
+        }
+
+        String current =
+                web.getUrl();
+
+        if (current == null ||
+                current.trim().isEmpty()) {
+            return false;
+        }
+
+        Uri uri;
+
+        try {
+            uri =
+                    Uri.parse(current);
+        } catch (Exception ignored) {
+            return false;
+        }
+
+        if (!isLudorumHost(uri)) {
+            return false;
+        }
+
+        String path =
+                pathOf(uri);
+
+        for (String part : pathParts) {
+            if (part != null &&
+                    !part.isEmpty() &&
+                    path.contains(part)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void updateBottomNav(String url) {
@@ -474,6 +545,31 @@ public class WebActivity extends Activity {
 
     private void applyAppPolish(WebView view) {
         try {
+            if (view == null) {
+                return;
+            }
+
+            String currentUrl =
+                    view.getUrl() == null
+                            ? ""
+                            : view.getUrl();
+
+            long now =
+                    System.currentTimeMillis();
+
+            if (currentUrl.equals(
+                    lastPolishUrl
+            ) &&
+                    now - lastPolishAt < 1800L) {
+                return;
+            }
+
+            lastPolishUrl =
+                    currentUrl;
+
+            lastPolishAt =
+                    now;
+
             if (appScriptCache == null) {
                 StringBuilder script = new StringBuilder();
 
@@ -712,8 +808,7 @@ public class WebActivity extends Activity {
                                 java.util.Locale.ROOT
                         );
 
-        return path.equals("/") ||
-                path.equals("/boutique") ||
+        return path.equals("/boutique") ||
                 path.equals("/boutique/") ||
                 path.equals("/shop") ||
                 path.equals("/shop/") ||
@@ -730,6 +825,30 @@ public class WebActivity extends Activity {
             return false;
         }
 
+        String path =
+                pathOf(uri);
+
+        if (path.equals("/") ||
+                path.isEmpty()) {
+            openNativeScreen(
+                    "home",
+                    null,
+                    null
+            );
+            return true;
+        }
+
+        if (path.equals("/favoris") ||
+                path.equals("/favoris/") ||
+                path.startsWith("/favoris/")) {
+            openNativeScreen(
+                    "favorites",
+                    null,
+                    null
+            );
+            return true;
+        }
+
         if (looksLikeReturnToShop(uri)) {
             openNativeScreen(
                     "shop",
@@ -738,9 +857,6 @@ public class WebActivity extends Activity {
             );
             return true;
         }
-
-        String path =
-                pathOf(uri);
 
         String productSlug =
                 commerceSlugAfter(
@@ -1041,7 +1157,7 @@ public class WebActivity extends Activity {
             applyAppPolish(view);
 
             if (cartTicker != null) {
-                cartTicker.refresh(true);
+                cartTicker.refresh();
             }
 
             super.onPageFinished(view, url);

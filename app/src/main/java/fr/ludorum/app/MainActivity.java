@@ -88,20 +88,33 @@ public class MainActivity extends Activity {
 
         buildScreen();
         loadCategories();
-        showHome();
+
+        Intent launchIntent =
+                getIntent();
 
         Uri deeplink =
-                getIntent() != null ? getIntent().getData() : null;
+                launchIntent != null
+                        ? launchIntent.getData()
+                        : null;
 
         if (deeplink != null &&
-                "https".equalsIgnoreCase(deeplink.getScheme())) {
+                "https".equalsIgnoreCase(
+                        deeplink.getScheme()
+                )) {
             routeNativeUri(deeplink);
             return;
         }
 
-        handleRequestedScreen(
-                getIntent()
-        );
+        if (hasSupportedRequestedScreen(
+                launchIntent
+        )) {
+            handleRequestedScreen(
+                    launchIntent
+            );
+            return;
+        }
+
+        showHome();
     }
 
     private void configureSystemBars() {
@@ -388,15 +401,46 @@ public class MainActivity extends Activity {
         navCart =
                 Ui.navItem(this, R.drawable.ic_cart, "Panier", false);
 
-        navHome.setOnClickListener(view -> showHome());
+        navHome.setOnClickListener(view -> {
+            if (!catalogueMode &&
+                    !favoritesMode &&
+                    !productMode &&
+                    content != null &&
+                    content.getChildCount() > 0) {
+                scroll.smoothScrollTo(
+                        0,
+                        0
+                );
+                return;
+            }
+
+            showHome();
+        });
+
         navAccount.setOnClickListener(
-                view -> openWeb(ACCOUNT, "Mon compte")
+                view -> openWeb(
+                        ACCOUNT,
+                        "Mon compte"
+                )
         );
-        navFavorites.setOnClickListener(
-                view -> showFavorites()
-        );
+
+        navFavorites.setOnClickListener(view -> {
+            if (favoritesMode) {
+                scroll.smoothScrollTo(
+                        0,
+                        0
+                );
+                return;
+            }
+
+            showFavorites();
+        });
+
         navCart.setOnClickListener(
-                view -> openWeb(CART, "Panier")
+                view -> openWeb(
+                        CART,
+                        "Panier"
+                )
         );
 
         LinearLayout[] items =
@@ -1300,6 +1344,65 @@ public class MainActivity extends Activity {
         return card;
     }
 
+    private boolean hasSupportedRequestedScreen(
+            Intent intent
+    ) {
+        if (intent == null) {
+            return false;
+        }
+
+        String screen =
+                intent.getStringExtra(
+                        "screen"
+                );
+
+        if (screen == null ||
+                screen.trim().isEmpty()) {
+            return false;
+        }
+
+        if ("home".equals(screen) ||
+                "accueil".equals(screen) ||
+                "shop".equals(screen) ||
+                "boutique".equals(screen) ||
+                "continue_shopping".equals(screen) ||
+                "favorites".equals(screen)) {
+            return true;
+        }
+
+        if ("product".equals(screen)) {
+            String slug =
+                    intent.getStringExtra(
+                            "product_slug"
+                    );
+
+            return slug != null &&
+                    !slug.trim().isEmpty();
+        }
+
+        if ("category".equals(screen)) {
+            String slug =
+                    intent.getStringExtra(
+                            "category_slug"
+                    );
+
+            return slug != null &&
+                    !slug.trim().isEmpty();
+        }
+
+        if ("search".equals(screen)) {
+            String query =
+                    intent.getStringExtra(
+                            "search_query"
+                    );
+
+            return query != null &&
+                    !query.trim().isEmpty();
+        }
+
+        return false;
+    }
+
     private void handleRequestedScreen(
             Intent intent
     ) {
@@ -1307,6 +1410,12 @@ public class MainActivity extends Activity {
 
         String requestedScreen =
                 intent.getStringExtra("screen");
+
+        if ("home".equals(requestedScreen) ||
+                "accueil".equals(requestedScreen)) {
+            showHome();
+            return;
+        }
 
         if ("shop".equals(requestedScreen) ||
                 "boutique".equals(requestedScreen) ||
@@ -2385,6 +2494,22 @@ public class MainActivity extends Activity {
         }
 
         if (button != null) {
+            Object currentTag =
+                    button.getTag(
+                            android.R.id.custom
+                    );
+
+            if (currentTag instanceof Integer &&
+                    ((Integer) currentTag) ==
+                    product.id) {
+                return;
+            }
+
+            button.setTag(
+                    android.R.id.custom,
+                    product.id
+            );
+
             button.setEnabled(false);
             button.setAlpha(.72f);
             button.setText("Ajout…");
@@ -2401,6 +2526,10 @@ public class MainActivity extends Activity {
                         if (button != null) {
                             button.setText("✓ Ajouté");
                             button.setAlpha(1f);
+                            button.setTag(
+                                    android.R.id.custom,
+                                    null
+                            );
 
                             button.postDelayed(
                                     () -> {
@@ -2426,6 +2555,10 @@ public class MainActivity extends Activity {
                             button.setText("Réessayer");
                             button.setEnabled(true);
                             button.setAlpha(1f);
+                            button.setTag(
+                                    android.R.id.custom,
+                                    null
+                            );
 
                             button.postDelayed(
                                     () -> button.setText(
@@ -2941,6 +3074,10 @@ public class MainActivity extends Activity {
 
                         @Override
                         public void onError(Exception error) {
+                            if (generation != screenGeneration) {
+                                return;
+                            }
+
                             grid.removeAllViews();
                             grid.addView(
                                     retryView(

@@ -514,6 +514,17 @@
       return;
     }
 
+    const currentQuantity =
+      Math.max(
+        1,
+        parseInt(
+          product.qty && product.qty.value
+            ? product.qty.value
+            : '1',
+          10
+        ) || 1
+      );
+
     button.dataset.removing = '1';
     button.disabled = true;
     button.textContent = '…';
@@ -523,12 +534,47 @@
       card.classList.add('is-removing');
     }
 
+    // La croix rouge signifie désormais "retirer 1 exemplaire".
+    // À partir de 2, on décrémente simplement la quantité.
+    if (currentQuantity > 1 && product.qty) {
+      const nextQuantity =
+        currentQuantity - 1;
+
+      triggerCartUpdate(
+        product.qty,
+        nextQuantity
+      );
+
+      setTimeout(
+        notifyCartChanged,
+        500
+      );
+
+      // Si WooCommerce n'a finalement pas reconstruit le panier,
+      // on ne laisse jamais la carte bloquée/grisée indéfiniment.
+      setTimeout(() => {
+        if (
+          button.isConnected &&
+          button.dataset.removing === '1'
+        ) {
+          button.dataset.removing = '0';
+          button.disabled = false;
+          button.textContent = '×';
+          button.removeAttribute('aria-busy');
+
+          if (card) {
+            card.classList.remove('is-removing');
+          }
+        }
+      }, 2800);
+
+      return;
+    }
+
+    // Quantité = 1 : on peut supprimer réellement la ligne.
     const url =
       (product.removeUrl || '').trim();
 
-    // WooCommerce classique :
-    // on utilise directement l'URL signée remove_item + nonce.
-    // Cela ne dépend d'aucun bouton caché ou handler JS tiers.
     if (
       url &&
       (
@@ -539,16 +585,12 @@
     ) {
       try {
         notifyCartChanged();
-
         window.location.assign(url);
         return;
-      } catch (_) {
-        // Continue vers le fallback ci-dessous.
-      }
+      } catch (_) {}
     }
 
-    // WooCommerce Blocks / templates JS :
-    // le vrai contrôle React/Woo reste dans le DOM mais est visuellement caché.
+    // WooCommerce Blocks / templates JS.
     if (product.remove) {
       try {
         product.remove.disabled = false;
@@ -565,10 +607,11 @@
           )
         );
 
-        setTimeout(notifyCartChanged, 450);
+        setTimeout(
+          notifyCartChanged,
+          450
+        );
 
-        // Si Woo n'a pas reconstruit le panier après 2,5 s,
-        // on rend le bouton disponible au lieu de le laisser bloqué.
         setTimeout(() => {
           if (
             button.isConnected &&
@@ -589,7 +632,6 @@
       } catch (_) {}
     }
 
-    // Aucun mécanisme Woo trouvé : restaure le bouton proprement.
     button.dataset.removing = '0';
     button.disabled = false;
     button.textContent = '×';
@@ -599,6 +641,7 @@
       card.classList.remove('is-removing');
     }
   }
+
 
   function findUpdateButton() {
     return $('button[name=update_cart],input[name=update_cart],button[class*=update-cart],button[class*=update_cart]');
@@ -946,7 +989,7 @@
         remove.type = 'button';
         remove.className = 'ludo-cart-remove';
         remove.textContent = '×';
-        remove.setAttribute('aria-label', `Retirer ${product.name}`);
+        remove.setAttribute('aria-label', `Retirer un exemplaire de ${product.name}`);
         remove.addEventListener('click', (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -1159,7 +1202,10 @@
   setTimeout(run, 600);
   setTimeout(run, 1400);
 
-  if (!window.__ludorumPremiumObserver) {
+  if (
+    (isCart() || isAccount()) &&
+    !window.__ludorumPremiumObserver
+  ) {
     let timer = null;
     window.__ludorumPremiumObserver = new MutationObserver((records) => {
       if (rebuilding || Date.now() < observerLockedUntil) return;
