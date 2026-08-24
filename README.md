@@ -1,79 +1,47 @@
-# Ludorum Android 1.0.0
+# Ludorum Android 1.0.3 — Performance Update
 
-Première version fonctionnelle complète de l'application Android Ludorum.
+Passe dédiée à la fluidité, sans changement de DA.
 
-## Expérience native
+## Images
+- déduplication des téléchargements d'une même image ;
+- une image présente dans plusieurs sections n'est téléchargée qu'une fois ;
+- décodage échantillonné pour éviter les bitmaps inutilement énormes ;
+- cache mémoire augmenté à 32 Mo ;
+- timeouts réseau raccourcis.
 
-- accueil Android Ludorum ;
-- recherche produits ;
-- catégories WooCommerce synchronisées ;
-- suppression des catégories techniques / Non classé / jetons-compteurs ;
-- Nouveautés ;
-- Promotions ;
-- Meilleures ventes ;
-- catalogue paginé ;
-- cartes produits alignées ;
-- LudoMatch et LudoMatch Groupe intégrés à l'application.
+## Catalogue / accueil
+- cache mémoire WooCommerce :
+  - produits : 30 secondes ;
+  - fiche produit : 30 secondes ;
+  - catégories : 5 minutes ;
+- retour vers Accueil/Boutique beaucoup plus rapide ;
+- anciennes requêtes ne construisent plus des vues/images si l'utilisateur
+  a déjà changé d'écran.
 
-## Compte
+## Ajouter au panier
+- suppression du second GET WooCommerce bloquant après un AJAX réussi ;
+- `fragments/cart_hash` reste la validation réelle de l'ajout ;
+- le bouton peut afficher `✓ Ajouté` immédiatement après la réponse Woo ;
+- le bandeau TTC récupère ensuite le montant réel du panier.
 
-- onglet Compte dans la barre basse ;
-- connexion au compte WordPress / WooCommerce ;
-- même session WooCommerce utilisée pendant le parcours d'achat ;
-- texte « vos adresses » supprimé de la présentation mobile de Mon compte ;
-- navigation Compte ↔ Panier sécurisée.
+## Bandeau panier
+- cache très court (650 ms) pour éviter deux requêtes identiques au même instant ;
+- suppression de la double requête au démarrage d'une Activity.
 
-## Favoris
+## WebView / panier / compte
+- injection JavaScript rendue idempotente ;
+- suppression d'une vague complète de re-skin inutile ;
+- MutationObserver limité aux changements de structure DOM, au lieu de surveiller
+  toutes les modifications d'attributs de toute la page ;
+- suppression du preraster hors écran inutile ;
+- fond blanc immédiat pour limiter les flashs de chargement ;
+- cache WebView standard conservé pour ne pas afficher un panier périmé.
 
-- cœur vide rouge sur les produits ;
-- cœur rouge plein lorsque le produit est favori ;
-- second appui pour retirer ;
-- état persistant sur l'appareil ;
-- page Favoris Android native ;
-- ajout au panier possible depuis Favoris.
+## Important
+Aucun cache long n'est utilisé pour le Panier/Checkout.
+Les données commerciales sensibles au temps restent relues depuis WooCommerce.
 
-Note : la wishlist 1.0.0 est locale à l'application et n'est pas encore
-synchronisée côté serveur avec TI WooCommerce Wishlist.
-
-## Panier
-
-- véritable ajout WooCommerce via `wc-ajax=add_to_cart` ;
-- ajout séquentiel fiable : plusieurs ajouts augmentent réellement le panier ;
-- cookies WooCommerce partagés avec le WebView ;
-- lecture de contrôle via WooCommerce Store API ;
-- panier premium Ludorum ;
-- une seule interface panier visible ;
-- interface WooCommerce d'origine masquée ;
-- quantité avec boutons − / + ;
-- suppression produit ;
-- sous-total et total ;
-- code promo masqué sur la première étape Panier ;
-- résumé de commande Ludorum ;
-- bouton « Passer à la commande ».
-
-## Commande et paiement
-
-- Panier → Checkout / Commande ;
-- `wc-ajax=checkout` autorisé ;
-- `wc-api` autorisé ;
-- order-pay et order-received autorisés ;
-- Stripe / PayPal / 3D Secure et intents bancaires conservés ;
-- boutique WooCommerce technique bloquée dans l'application.
-
-## Interface / Android
-
-- logo officiel Ludorum ;
-- icône d'application « L » Ludorum ;
-- barre Android inférieure respectée ;
-- navigation basse : Accueil / Compte / Favoris / Panier ;
-- scroll WebView optimisé ;
-- overlays transparents neutralisés ;
-- réseaux sociaux dans un dock repliable ;
-- dock réseaux replié par défaut ;
-- trackers non essentiels filtrés dans le WebView.
-
-## Release
-
-- `versionName`: `1.0.0`
-- `versionCode`: `100`
-- artefact GitHub Actions : `ludorum-android-v1.0.0-debug`
+## Version
+- versionCode : 103
+- versionName : 1.0.3
+- artefact GitHub : `ludorum-android-v1.0.3-performance-debug`

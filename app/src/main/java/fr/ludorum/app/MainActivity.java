@@ -8,6 +8,7 @@ import android.graphics.Paint;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
+import android.text.Html;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -48,6 +49,7 @@ public class MainActivity extends Activity {
     private LinearLayout categoryRow;
     private ScrollView scroll;
     private EditText search;
+    private CartTicker cartTicker;
 
     private FavoriteStore favoriteStore;
     private final Map<Integer, List<ImageView>> favoriteHeartViews =
@@ -59,9 +61,12 @@ public class MainActivity extends Activity {
     private LinearLayout navCart;
 
     private boolean favoritesMode = false;
-
-
+    private boolean productMode = false;
     private boolean catalogueMode = false;
+
+    // Empêche une ancienne requête réseau de continuer à construire
+    // des vues/images après que l'utilisateur a changé d'écran.
+    private int screenGeneration = 0;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -90,18 +95,13 @@ public class MainActivity extends Activity {
 
         if (deeplink != null &&
                 "https".equalsIgnoreCase(deeplink.getScheme())) {
-            openWeb(deeplink.toString(), "Ludorum");
+            routeNativeUri(deeplink);
             return;
         }
 
-        String requestedScreen =
-                getIntent() != null
-                        ? getIntent().getStringExtra("screen")
-                        : null;
-
-        if ("favorites".equals(requestedScreen)) {
-            showFavorites();
-        }
+        handleRequestedScreen(
+                getIntent()
+        );
     }
 
     private void configureSystemBars() {
@@ -118,6 +118,18 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Color.WHITE);
 
         buildHeader();
+
+        cartTicker =
+                new CartTicker(this);
+
+        root.addView(
+                cartTicker,
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Ui.dp(this, 34)
+                )
+        );
+
         buildContent();
 
         View bottomHost = buildBottomNavHost();
@@ -459,8 +471,10 @@ public class MainActivity extends Activity {
     }
 
     private void showHome() {
+        final int generation = ++screenGeneration;
         catalogueMode = false;
         favoritesMode = false;
+        productMode = false;
         setMainNavActive("home");
         favoriteHeartViews.clear();
         search.setText("");
@@ -468,7 +482,6 @@ public class MainActivity extends Activity {
         scroll.scrollTo(0, 0);
 
         addHero();
-        addShippingStrip();
 
         content.addView(space(16));
 
@@ -695,8 +708,10 @@ public class MainActivity extends Activity {
             String query,
             int page
     ) {
+        final int generation = ++screenGeneration;
         catalogueMode = true;
         favoritesMode = false;
+        productMode = false;
         setMainNavActive("home");
         favoriteHeartViews.clear();
         content.removeAllViews();
@@ -770,6 +785,10 @@ public class MainActivity extends Activity {
                 new ApiClient.Callback<ApiClient.ProductPage>() {
                     @Override
                     public void onSuccess(ApiClient.ProductPage result) {
+                        if (generation != screenGeneration) {
+                            return;
+                        }
+
                         grid.removeAllViews();
                         renderGrid(result.products, grid);
 
@@ -790,6 +809,10 @@ public class MainActivity extends Activity {
 
                     @Override
                     public void onError(Exception error) {
+                        if (generation != screenGeneration) {
+                            return;
+                        }
+
                         grid.removeAllViews();
                         grid.addView(
                                 retryView(
@@ -1217,7 +1240,7 @@ public class MainActivity extends Activity {
         TextView add =
                 Ui.pill(
                         this,
-                        product.inStock ? "+ Panier" : "Voir",
+                        product.inStock ? "Ajouter au panier" : "Voir",
                         Color.WHITE,
                         product.inStock ? Ui.BLUE : Ui.NAVY,
                         product.inStock ? Ui.BLUE : Ui.NAVY
@@ -1229,7 +1252,7 @@ public class MainActivity extends Activity {
                     if (product.inStock && product.purchasable) {
                         addToCart(product, add);
                     } else {
-                        openWeb(product.permalink, product.name);
+                        showProductDetail(product);
                     }
                 }
         );
@@ -1243,10 +1266,805 @@ public class MainActivity extends Activity {
         card.addView(add, addParams);
 
         card.setOnClickListener(
-                view -> openWeb(product.permalink, product.name)
+                view -> showProductDetail(product)
         );
 
         return card;
+    }
+
+    private void handleRequestedScreen(
+            Intent intent
+    ) {
+        if (intent == null) return;
+
+        String requestedScreen =
+                intent.getStringExtra("screen");
+
+        if ("favorites".equals(requestedScreen)) {
+            showFavorites();
+            return;
+        }
+
+        if ("shop".equals(requestedScreen)) {
+            showCatalogue(
+                    "Boutique",
+                    "Tous les produits Ludorum.",
+                    "",
+                    1
+            );
+            return;
+        }
+
+        if ("product".equals(requestedScreen)) {
+            String slug =
+                    intent.getStringExtra(
+                            "product_slug"
+                    );
+
+            if (slug != null &&
+                    !slug.trim().isEmpty()) {
+                loadProductBySlug(slug);
+            }
+            return;
+        }
+
+        if ("category".equals(requestedScreen)) {
+            String slug =
+                    intent.getStringExtra(
+                            "category_slug"
+                    );
+
+            if (slug != null &&
+                    !slug.trim().isEmpty()) {
+                loadCategoryBySlug(slug);
+            }
+            return;
+        }
+
+        if ("search".equals(requestedScreen)) {
+            String query =
+                    intent.getStringExtra(
+                            "search_query"
+                    );
+
+            if (query != null &&
+                    !query.trim().isEmpty()) {
+                search.setText(query);
+                searchProducts(query);
+            }
+        }
+    }
+
+    private void routeNativeUri(
+            Uri uri
+    ) {
+        if (uri == null) {
+            showHome();
+            return;
+        }
+
+        String host =
+                uri.getHost() == null
+                        ? ""
+                        : uri.getHost()
+                                .toLowerCase(Locale.ROOT);
+
+        if (!host.equals("ludorum.fr") &&
+                !host.equals("www.ludorum.fr")) {
+            showHome();
+            return;
+        }
+
+        String path =
+                uri.getPath() == null
+                        ? "/"
+                        : uri.getPath()
+                                .toLowerCase(Locale.ROOT);
+
+        if (path.equals("/") ||
+                path.isEmpty()) {
+            showHome();
+            return;
+        }
+
+        if (path.contains("/favoris")) {
+            showFavorites();
+            return;
+        }
+
+        if (path.contains("/panier") ||
+                path.contains("/cart")) {
+            openWeb(CART, "Panier");
+            return;
+        }
+
+        if (path.contains("/mon-compte")) {
+            openWeb(ACCOUNT, "Mon compte");
+            return;
+        }
+
+        if (path.contains("/commande") ||
+                path.contains("/checkout") ||
+                path.contains("/order-pay") ||
+                path.contains("/order-received")) {
+            openWeb(uri.toString(), "Commande");
+            return;
+        }
+
+        String searchQuery =
+                uri.getQueryParameter("s");
+
+        if (searchQuery != null &&
+                !searchQuery.trim().isEmpty()) {
+            search.setText(searchQuery);
+            searchProducts(searchQuery);
+            return;
+        }
+
+        String productSlug =
+                slugAfter(
+                        path,
+                        "/produit/"
+                );
+
+        if (productSlug == null) {
+            productSlug =
+                    slugAfter(
+                            path,
+                            "/product/"
+                    );
+        }
+
+        if (productSlug != null) {
+            loadProductBySlug(productSlug);
+            return;
+        }
+
+        String categorySlug =
+                slugAfter(
+                        path,
+                        "/categorie-produit/"
+                );
+
+        if (categorySlug == null) {
+            categorySlug =
+                    slugAfter(
+                            path,
+                            "/product-category/"
+                    );
+        }
+
+        if (categorySlug != null) {
+            loadCategoryBySlug(categorySlug);
+            return;
+        }
+
+        // Boutique, Shop, catalogue technique ou tout autre lien commercial :
+        // destination unique = boutique native Ludorum.
+        if (path.contains("/boutique") ||
+                path.contains("/shop") ||
+                path.contains("catalogue-woocommerce") ||
+                path.contains("woocommerce-technique") ||
+                path.contains("boutique-technique")) {
+            showCatalogue(
+                    "Boutique",
+                    "Tous les produits Ludorum.",
+                    "",
+                    1
+            );
+            return;
+        }
+
+        showHome();
+    }
+
+    private String slugAfter(
+            String path,
+            String marker
+    ) {
+        if (path == null ||
+                marker == null) {
+            return null;
+        }
+
+        int index =
+                path.indexOf(marker);
+
+        if (index < 0) {
+            return null;
+        }
+
+        String tail =
+                path.substring(
+                        index + marker.length()
+                );
+
+        if (tail.startsWith("/")) {
+            tail = tail.substring(1);
+        }
+
+        int slash =
+                tail.indexOf("/");
+
+        if (slash >= 0) {
+            tail =
+                    tail.substring(0, slash);
+        }
+
+        tail = tail.trim();
+
+        return tail.isEmpty()
+                ? null
+                : tail;
+    }
+
+    private void loadProductBySlug(
+            String slug
+    ) {
+        final int generation =
+                ++screenGeneration;
+        productMode = true;
+        catalogueMode = false;
+        favoritesMode = false;
+        setMainNavActive("home");
+        favoriteHeartViews.clear();
+        content.removeAllViews();
+        scroll.scrollTo(0, 0);
+
+        ProgressBar progress =
+                new ProgressBar(this);
+
+        LinearLayout.LayoutParams pp =
+                new LinearLayout.LayoutParams(
+                        Ui.dp(this, 42),
+                        Ui.dp(this, 42)
+                );
+        pp.gravity =
+                Gravity.CENTER_HORIZONTAL;
+        pp.topMargin =
+                Ui.dp(this, 40);
+
+        content.addView(
+                progress,
+                pp
+        );
+
+        ApiClient.getProductBySlug(
+                slug,
+                new ApiClient.Callback<Product>() {
+                    @Override
+                    public void onSuccess(
+                            Product product
+                    ) {
+                        if (generation != screenGeneration) {
+                            return;
+                        }
+
+                        showProductDetail(product);
+                    }
+
+                    @Override
+                    public void onError(
+                            Exception error
+                    ) {
+                        if (generation != screenGeneration) {
+                            return;
+                        }
+
+                        showCatalogue(
+                                "Boutique",
+                                "Tous les produits Ludorum.",
+                                "",
+                                1
+                        );
+                    }
+                }
+        );
+    }
+
+    private void loadCategoryBySlug(
+            String slug
+    ) {
+        final int generation =
+                ++screenGeneration;
+
+        ApiClient.getCategoryBySlug(
+                slug,
+                new ApiClient.Callback<ProductCategory>() {
+                    @Override
+                    public void onSuccess(
+                            ProductCategory category
+                    ) {
+                        if (generation != screenGeneration) {
+                            return;
+                        }
+
+                        showCatalogue(
+                                category.name,
+                                "Parcourez cette catégorie du catalogue Ludorum.",
+                                "&category=" +
+                                category.id,
+                                1
+                        );
+                    }
+
+                    @Override
+                    public void onError(
+                            Exception error
+                    ) {
+                        if (generation != screenGeneration) {
+                            return;
+                        }
+
+                        showCatalogue(
+                                "Boutique",
+                                "Tous les produits Ludorum.",
+                                "",
+                                1
+                        );
+                    }
+                }
+        );
+    }
+
+    private void showProductDetail(
+            Product product
+    ) {
+        if (product == null) return;
+
+        ++screenGeneration;
+
+        productMode = true;
+        catalogueMode = false;
+        favoritesMode = false;
+        setMainNavActive("home");
+        favoriteHeartViews.clear();
+        content.removeAllViews();
+        scroll.scrollTo(0, 0);
+
+        TextView eyebrow =
+                Ui.text(
+                        this,
+                        "FICHE PRODUIT LUDORUM",
+                        10,
+                        Ui.BLUE,
+                        true
+                );
+        content.addView(eyebrow);
+
+        FrameLayout imageCard =
+                new FrameLayout(this);
+        imageCard.setBackground(
+                Ui.roundedStroke(
+                        Ui.SOFT,
+                        Ui.BORDER,
+                        1,
+                        22,
+                        this
+                )
+        );
+
+        ImageView image =
+                new ImageView(this);
+        image.setImageResource(
+                R.drawable.ludorum_logo
+        );
+        image.setAlpha(.14f);
+        image.setPadding(
+                Ui.dp(this, 22),
+                Ui.dp(this, 22),
+                Ui.dp(this, 22),
+                Ui.dp(this, 22)
+        );
+        image.setScaleType(
+                ImageView.ScaleType.FIT_CENTER
+        );
+
+        imageCard.addView(
+                image,
+                new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Ui.dp(this, 260)
+                )
+        );
+
+        ImageLoader.load(
+                product.imageUrl,
+                image
+        );
+
+        ImageView heart =
+                new ImageView(this);
+        heart.setScaleType(
+                ImageView.ScaleType.CENTER
+        );
+        heart.setPadding(
+                Ui.dp(this, 10),
+                Ui.dp(this, 10),
+                Ui.dp(this, 10),
+                Ui.dp(this, 10)
+        );
+        heart.setBackground(
+                Ui.rounded(
+                        Color.WHITE,
+                        24,
+                        this
+                )
+        );
+        heart.setElevation(
+                Ui.dp(this, 8)
+        );
+
+        registerFavoriteHeart(
+                product.id,
+                heart
+        );
+        updateFavoriteHeart(
+                product.id
+        );
+
+        heart.setOnClickListener(
+                view -> {
+                    boolean nowFavorite =
+                            favoriteStore.toggle(
+                                    product
+                            );
+
+                    updateFavoriteHeart(
+                            product.id
+                    );
+
+                    Toast.makeText(
+                            MainActivity.this,
+                            nowFavorite
+                                    ? "Ajouté aux favoris ♥"
+                                    : "Retiré des favoris",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                }
+        );
+
+        FrameLayout.LayoutParams hp =
+                new FrameLayout.LayoutParams(
+                        Ui.dp(this, 46),
+                        Ui.dp(this, 46),
+                        Gravity.TOP |
+                        Gravity.START
+                );
+        hp.setMargins(
+                Ui.dp(this, 12),
+                Ui.dp(this, 12),
+                0,
+                0
+        );
+        imageCard.addView(
+                heart,
+                hp
+        );
+
+        if (product.onSale) {
+            TextView promo =
+                    Ui.text(
+                            this,
+                            "PROMO",
+                            11,
+                            Color.WHITE,
+                            true
+                    );
+            promo.setGravity(
+                    Gravity.CENTER
+            );
+            promo.setPadding(
+                    Ui.dp(this, 11),
+                    Ui.dp(this, 6),
+                    Ui.dp(this, 11),
+                    Ui.dp(this, 6)
+            );
+            promo.setBackground(
+                    Ui.rounded(
+                            Ui.RED,
+                            14,
+                            this
+                    )
+            );
+
+            FrameLayout.LayoutParams pr =
+                    new FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            Gravity.TOP |
+                            Gravity.END
+                    );
+            pr.setMargins(
+                    0,
+                    Ui.dp(this, 12),
+                    Ui.dp(this, 12),
+                    0
+            );
+            imageCard.addView(
+                    promo,
+                    pr
+            );
+        }
+
+        LinearLayout.LayoutParams imageParams =
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Ui.dp(this, 260)
+                );
+        imageParams.topMargin =
+                Ui.dp(this, 10);
+        content.addView(
+                imageCard,
+                imageParams
+        );
+
+        TextView title =
+                Ui.text(
+                        this,
+                        product.name,
+                        25,
+                        Ui.NAVY,
+                        true
+                );
+        title.setLineSpacing(
+                Ui.dp(this, 2),
+                1f
+        );
+
+        LinearLayout.LayoutParams titleParams =
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                );
+        titleParams.topMargin =
+                Ui.dp(this, 18);
+        content.addView(
+                title,
+                titleParams
+        );
+
+        LinearLayout priceRow =
+                new LinearLayout(this);
+        priceRow.setOrientation(
+                LinearLayout.HORIZONTAL
+        );
+        priceRow.setGravity(
+                Gravity.CENTER_VERTICAL
+        );
+
+        TextView price =
+                Ui.text(
+                        this,
+                        formatPrice(
+                                product.currentPrice,
+                                product.currencyCode,
+                                product.currencyMinorUnit
+                        ),
+                        22,
+                        product.onSale
+                                ? Ui.RED
+                                : Ui.BLUE,
+                        true
+                );
+        priceRow.addView(price);
+
+        if (product.onSale &&
+                product.regularPrice != null &&
+                !product.regularPrice.isEmpty() &&
+                !product.regularPrice.equals(
+                        product.currentPrice
+                )) {
+            TextView regular =
+                    Ui.text(
+                            this,
+                            formatPrice(
+                                    product.regularPrice,
+                                    product.currencyCode,
+                                    product.currencyMinorUnit
+                            ),
+                            14,
+                            Ui.MUTED,
+                            false
+                    );
+
+            regular.setPaintFlags(
+                    regular.getPaintFlags() |
+                    Paint.STRIKE_THRU_TEXT_FLAG
+            );
+
+            LinearLayout.LayoutParams rp =
+                    new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                    );
+            rp.leftMargin =
+                    Ui.dp(this, 9);
+
+            priceRow.addView(
+                    regular,
+                    rp
+            );
+        }
+
+        LinearLayout.LayoutParams priceParams =
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                );
+        priceParams.topMargin =
+                Ui.dp(this, 9);
+        content.addView(
+                priceRow,
+                priceParams
+        );
+
+        TextView stock =
+                Ui.text(
+                        this,
+                        product.inStock
+                                ? "● En stock"
+                                : "● Rupture de stock",
+                        13,
+                        product.inStock
+                                ? Ui.GREEN
+                                : Ui.RED,
+                        true
+                );
+
+        LinearLayout.LayoutParams stockParams =
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                );
+        stockParams.topMargin =
+                Ui.dp(this, 8);
+        content.addView(
+                stock,
+                stockParams
+        );
+
+        if (product.shortDescription != null &&
+                !product.shortDescription.trim().isEmpty()) {
+            TextView description =
+                    Ui.text(
+                            this,
+                            "",
+                            14,
+                            Ui.MUTED,
+                            false
+                    );
+
+            description.setText(
+                    Html.fromHtml(
+                            product.shortDescription,
+                            Html.FROM_HTML_MODE_LEGACY
+                    )
+            );
+            description.setLineSpacing(
+                    Ui.dp(this, 3),
+                    1f
+            );
+
+            LinearLayout.LayoutParams descParams =
+                    new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                    );
+            descParams.topMargin =
+                    Ui.dp(this, 15);
+
+            content.addView(
+                    description,
+                    descParams
+            );
+        }
+
+        TextView action =
+                Ui.pill(
+                        this,
+                        "simple".equalsIgnoreCase(product.type) &&
+                        product.inStock &&
+                        product.purchasable
+                                ? "Ajouter au panier"
+                                : "Choisir les options",
+                        Color.WHITE,
+                        Ui.BLUE,
+                        Ui.BLUE
+                );
+        action.setTextSize(15);
+
+        action.setOnClickListener(
+                view -> {
+                    if ("simple".equalsIgnoreCase(product.type) &&
+                            product.inStock &&
+                            product.purchasable) {
+                        addToCart(
+                                product,
+                                action
+                        );
+                    } else {
+                        openProductOptions(
+                                product
+                        );
+                    }
+                }
+        );
+
+        LinearLayout.LayoutParams actionParams =
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Ui.dp(this, 50)
+                );
+        actionParams.topMargin =
+                Ui.dp(this, 20);
+        content.addView(
+                action,
+                actionParams
+        );
+
+        TextView back =
+                Ui.pill(
+                        this,
+                        "Retour à la boutique",
+                        Ui.BLUE,
+                        Color.WHITE,
+                        Ui.BLUE
+                );
+
+        back.setOnClickListener(
+                view -> showCatalogue(
+                        "Boutique",
+                        "Tous les produits Ludorum.",
+                        "",
+                        1
+                )
+        );
+
+        LinearLayout.LayoutParams backParams =
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Ui.dp(this, 46)
+                );
+        backParams.topMargin =
+                Ui.dp(this, 10);
+        content.addView(
+                back,
+                backParams
+        );
+    }
+
+    private void openProductOptions(
+            Product product
+    ) {
+        if (product == null ||
+                product.permalink == null ||
+                product.permalink.trim().isEmpty()) {
+            return;
+        }
+
+        Intent intent =
+                new Intent(
+                        this,
+                        WebActivity.class
+                );
+
+        intent.putExtra(
+                WebActivity.EXTRA_URL,
+                product.permalink
+        );
+
+        intent.putExtra(
+                WebActivity.EXTRA_TITLE,
+                product.name
+        );
+
+        intent.putExtra(
+                WebActivity.EXTRA_ALLOW_PRODUCT_PAGE,
+                true
+        );
+
+        startActivity(intent);
     }
 
     private void registerFavoriteHeart(
@@ -1296,8 +2114,10 @@ public class MainActivity extends Activity {
     }
 
     private void showFavorites() {
+        ++screenGeneration;
         catalogueMode = false;
         favoritesMode = true;
+        productMode = false;
         setMainNavActive("favorites");
         favoriteHeartViews.clear();
         search.setText("");
@@ -1510,30 +2330,23 @@ public class MainActivity extends Activity {
     ) {
         if (product == null ||
                 product.id <= 0) {
-            Toast.makeText(
-                    this,
-                    "Impossible d’ajouter ce produit.",
-                    Toast.LENGTH_SHORT
-            ).show();
+            if (button != null) {
+                button.setText("Indisponible");
+                button.setEnabled(false);
+            }
             return;
         }
 
         if (!"simple".equalsIgnoreCase(
                 product.type
         )) {
-            openWeb(
-                    product.permalink,
-                    product.name
-            );
+            showProductDetail(product);
             return;
         }
 
         if (!product.inStock ||
                 !product.purchasable) {
-            openWeb(
-                    product.permalink,
-                    product.name
-            );
+            showProductDetail(product);
             return;
         }
 
@@ -1557,27 +2370,18 @@ public class MainActivity extends Activity {
 
                             button.postDelayed(
                                     () -> {
-                                        button.setText("+ Panier");
+                                        button.setText(
+                                                "Ajouter au panier"
+                                        );
                                         button.setEnabled(true);
                                     },
                                     750
                             );
                         }
 
-                        String message =
-                                itemsCount >= 0
-                                        ? "Panier mis à jour : " +
-                                          itemsCount +
-                                          (itemsCount > 1
-                                                  ? " articles"
-                                                  : " article")
-                                        : "Produit ajouté au panier ✓";
-
-                        Toast.makeText(
-                                MainActivity.this,
-                                message,
-                                Toast.LENGTH_SHORT
-                        ).show();
+                        if (cartTicker != null) {
+                            cartTicker.refresh(true);
+                        }
                     }
 
                     @Override
@@ -1585,16 +2389,17 @@ public class MainActivity extends Activity {
                             String message
                     ) {
                         if (button != null) {
-                            button.setText("+ Panier");
+                            button.setText("Réessayer");
                             button.setEnabled(true);
                             button.setAlpha(1f);
-                        }
 
-                        Toast.makeText(
-                                MainActivity.this,
-                                message,
-                                Toast.LENGTH_LONG
-                        ).show();
+                            button.postDelayed(
+                                    () -> button.setText(
+                                            "Ajouter au panier"
+                                    ),
+                                    1200
+                            );
+                        }
                     }
                 }
         );
@@ -1765,28 +2570,45 @@ public class MainActivity extends Activity {
     }
 
     @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        setIntent(intent);
+    protected void onResume() {
+        super.onResume();
 
-        Uri uri = intent != null ? intent.getData() : null;
-        if (uri != null &&
-                "https".equalsIgnoreCase(uri.getScheme())) {
-            openWeb(uri.toString(), "Ludorum");
-            return;
-        }
-
-        if (intent != null &&
-                "favorites".equals(
-                        intent.getStringExtra("screen")
-                )) {
-            showFavorites();
+        if (cartTicker != null) {
+            cartTicker.refresh(true);
         }
     }
 
     @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+
+        Uri uri =
+                intent != null
+                        ? intent.getData()
+                        : null;
+
+        if (uri != null &&
+                "https".equalsIgnoreCase(
+                        uri.getScheme()
+                )) {
+            routeNativeUri(uri);
+            return;
+        }
+
+        handleRequestedScreen(intent);
+    }
+
+    @Override
     public void onBackPressed() {
-        if (catalogueMode || favoritesMode) {
+        if (productMode) {
+            showCatalogue(
+                    "Boutique",
+                    "Tous les produits Ludorum.",
+                    "",
+                    1
+            );
+        } else if (catalogueMode || favoritesMode) {
             showHome();
         } else {
             super.onBackPressed();
@@ -1804,6 +2626,7 @@ public class MainActivity extends Activity {
         final String subtitle;
         final String query;
         final int accent;
+        final int generation;
 
         int page = 1;
 
@@ -1824,6 +2647,7 @@ public class MainActivity extends Activity {
             this.subtitle = subtitle;
             this.query = query;
             this.accent = accent;
+            this.generation = screenGeneration;
         }
 
         void attach(LinearLayout parent) {
@@ -2053,6 +2877,10 @@ public class MainActivity extends Activity {
                     new ApiClient.Callback<ApiClient.ProductPage>() {
                         @Override
                         public void onSuccess(ApiClient.ProductPage result) {
+                            if (generation != screenGeneration) {
+                                return;
+                            }
+
                             grid.removeAllViews();
 
                             if (result.products.isEmpty() && page > 1) {

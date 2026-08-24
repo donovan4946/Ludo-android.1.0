@@ -1,6 +1,16 @@
 (() => {
   'use strict';
 
+  if (window.__ludorumV103Booted) {
+    try {
+      if (typeof window.__ludorumRun === 'function') {
+        window.__ludorumRun();
+      }
+    } catch (_) {}
+    return;
+  }
+  window.__ludorumV103Booted = true;
+
   const BLUE = '#0B4DBB';
   const NAVY = '#071A33';
   const RED = '#CF1F1F';
@@ -49,6 +59,54 @@
         display: none !important;
       }
       body { padding-bottom: 18px !important; }
+
+      /* Aucun popup marketing/cookies dans l'application. */
+      .cmplz-cookiebanner,
+      .cmplz-modal,
+      .elementor-popup-modal,
+      [class*="newsletter-popup"],
+      [id*="newsletter-popup"],
+      [class*="marketing-popup"],
+      [id*="marketing-popup"] {
+        display: none !important;
+        pointer-events: none !important;
+      }
+
+      #ludorum-account-tabs {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 8px !important;
+        width: 100% !important;
+        margin: 0 0 18px !important;
+        padding: 4px !important;
+        box-sizing: border-box !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 16px !important;
+        background: #F7F9FC !important;
+      }
+
+      #ludorum-account-tabs button {
+        min-height: 46px !important;
+        padding: 9px 10px !important;
+        border: 1px solid transparent !important;
+        border-radius: 12px !important;
+        background: transparent !important;
+        color: #071A33 !important;
+        font-size: 14px !important;
+        font-weight: 800 !important;
+        box-shadow: none !important;
+      }
+
+      #ludorum-account-tabs button.is-active {
+        border-color: #0B4DBB !important;
+        background: #0B4DBB !important;
+        color: #FFFFFF !important;
+      }
+
+      .ludorum-account-panel > h2:first-child,
+      .ludorum-account-panel > h3:first-child {
+        display: none !important;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -65,6 +123,119 @@
           .replace(/vos commandes,\s*votre/gi, 'vos commandes, votre');
       }
     }
+  }
+
+  function accountTabs() {
+    if (!isAccount() || $('#ludorum-account-tabs')) return;
+
+    const loginForm =
+      $('form.woocommerce-form-login') ||
+      $('form.login');
+
+    const registerForm =
+      $('form.woocommerce-form-register') ||
+      $('form.register');
+
+    if (!loginForm || !registerForm) return;
+
+    const loginPanel =
+      loginForm.closest('.u-column1,.col-1,[class*=column1]') ||
+      loginForm.parentElement;
+
+    const registerPanel =
+      registerForm.closest('.u-column2,.col-2,[class*=column2]') ||
+      registerForm.parentElement;
+
+    if (!loginPanel || !registerPanel || loginPanel === registerPanel) return;
+
+    loginPanel.classList.add('ludorum-account-panel');
+    registerPanel.classList.add('ludorum-account-panel');
+
+    const tabs = document.createElement('div');
+    tabs.id = 'ludorum-account-tabs';
+
+    const loginButton = document.createElement('button');
+    loginButton.type = 'button';
+    loginButton.textContent = 'Se connecter';
+
+    const registerButton = document.createElement('button');
+    registerButton.type = 'button';
+    registerButton.textContent = 'S’inscrire';
+
+    function select(mode, doScroll) {
+      const login = mode === 'login';
+
+      loginButton.classList.toggle('is-active', login);
+      registerButton.classList.toggle('is-active', !login);
+
+      loginPanel.style.setProperty(
+        'display',
+        login ? 'block' : 'none',
+        'important'
+      );
+
+      registerPanel.style.setProperty(
+        'display',
+        login ? 'none' : 'block',
+        'important'
+      );
+
+      if (doScroll) {
+        window.scrollTo({
+          top: Math.max(
+            0,
+            tabs.getBoundingClientRect().top +
+            window.scrollY -
+            18
+          ),
+          behavior: 'smooth'
+        });
+      }
+    }
+
+    loginButton.addEventListener(
+      'click',
+      () => select('login', true)
+    );
+
+    registerButton.addEventListener(
+      'click',
+      () => select('register', true)
+    );
+
+    tabs.append(
+      loginButton,
+      registerButton
+    );
+
+    const parent =
+      loginPanel.parentElement === registerPanel.parentElement
+        ? loginPanel.parentElement
+        : loginPanel.parentElement;
+
+    parent.insertBefore(
+      tabs,
+      loginPanel
+    );
+
+    select(
+      location.hash.toLowerCase().includes('inscription') ||
+      location.hash.toLowerCase().includes('register')
+        ? 'register'
+        : 'login',
+      false
+    );
+  }
+
+  function notifyCartChanged() {
+    try {
+      if (
+        window.LudorumAndroidBridge &&
+        typeof window.LudorumAndroidBridge.cartChanged === 'function'
+      ) {
+        window.LudorumAndroidBridge.cartChanged();
+      }
+    } catch (_) {}
   }
 
   function hideCoupon() {
@@ -321,9 +492,13 @@
         update.disabled = false;
         update.removeAttribute('disabled');
         update.click();
+        setTimeout(notifyCartChanged, 700);
       } else {
         const form = originalQty.closest('form');
-        if (form && typeof form.requestSubmit === 'function') form.requestSubmit();
+        if (form && typeof form.requestSubmit === 'function') {
+          form.requestSubmit();
+          setTimeout(notifyCartChanged, 700);
+        }
       }
     }, 280);
   }
@@ -544,7 +719,10 @@
         remove.textContent = '×';
         remove.setAttribute('aria-label', `Retirer ${product.name}`);
         remove.addEventListener('click', () => {
-          if (product.remove) product.remove.click();
+          if (product.remove) {
+            product.remove.click();
+            setTimeout(notifyCartChanged, 700);
+          }
         });
 
         const bottom = document.createElement('div');
@@ -664,17 +842,19 @@
   function run() {
     addGlobalCss();
     cleanAccountCopy();
+    accountTabs();
     hideCoupon();
     guardCartLinks();
     buildSocialDock();
     rebuildPremiumCart();
   }
 
+  window.__ludorumRun = run;
+
   run();
-  setTimeout(run, 180);
-  setTimeout(run, 650);
-  setTimeout(run, 1500);
-  setTimeout(run, 2800);
+  setTimeout(run, 140);
+  setTimeout(run, 600);
+  setTimeout(run, 1400);
 
   if (!window.__ludorumPremiumObserver) {
     let timer = null;
@@ -686,6 +866,12 @@
         try { run(); } catch (_) {}
       }, 260);
     });
-    window.__ludorumPremiumObserver.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: false });
+    window.__ludorumPremiumObserver.observe(
+      document.body,
+      {
+        childList: true,
+        subtree: true
+      }
+    );
   }
 })();

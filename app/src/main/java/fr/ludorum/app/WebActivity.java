@@ -11,6 +11,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -22,7 +23,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import java.io.ByteArrayInputStream;
 import java.io.BufferedReader;
@@ -32,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 public class WebActivity extends Activity {
     static final String EXTRA_URL = "url";
     static final String EXTRA_TITLE = "title";
+    static final String EXTRA_ALLOW_PRODUCT_PAGE = "allow_product_page";
 
     private static final String BASE = "https://ludorum.fr";
     private static final String ACCOUNT = BASE + "/mon-compte/";
@@ -41,6 +42,7 @@ public class WebActivity extends Activity {
     private WebView web;
     private ProgressBar progress;
     private TextView title;
+    private CartTicker cartTicker;
 
     private String initialUrl = BASE;
     private boolean cartMode = false;
@@ -68,6 +70,12 @@ public class WebActivity extends Activity {
 
         String url = getIntent().getStringExtra(EXTRA_URL);
         String requestedTitle = getIntent().getStringExtra(EXTRA_TITLE);
+
+        allowProductPage =
+                getIntent().getBooleanExtra(
+                        EXTRA_ALLOW_PRODUCT_PAGE,
+                        false
+                );
 
         initialUrl = url == null ? BASE : url;
         String initialLower =
@@ -175,6 +183,17 @@ public class WebActivity extends Activity {
 
         root.addView(top);
 
+        cartTicker =
+                new CartTicker(this);
+
+        root.addView(
+                cartTicker,
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Ui.dp(this, 34)
+                )
+        );
+
         progress =
                 new ProgressBar(
                         this,
@@ -214,8 +233,8 @@ public class WebActivity extends Activity {
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
         settings.setMediaPlaybackRequiresUserGesture(true);
-        settings.setOffscreenPreRaster(true);
 
+        web.setBackgroundColor(Color.WHITE);
         web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setVerticalScrollBarEnabled(false);
@@ -235,12 +254,17 @@ public class WebActivity extends Activity {
 
         settings.setUserAgentString(
                 settings.getUserAgentString() +
-                " LudorumAndroid/1.0.0"
+                " LudorumAndroid/1.0.3"
         );
 
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(web, true);
+
+        web.addJavascriptInterface(
+                new AppBridge(),
+                "LudorumAndroidBridge"
+        );
 
         web.setWebViewClient(new Client());
         web.setWebChromeClient(new Chrome());
@@ -440,12 +464,8 @@ public class WebActivity extends Activity {
             }
 
             view.evaluateJavascript(appScriptCache, null);
-        } catch (Exception error) {
-            Toast.makeText(
-                    this,
-                    "Interface Ludorum : " + error.getClass().getSimpleName(),
-                    Toast.LENGTH_SHORT
-            ).show();
+        } catch (Exception ignored) {
+            // Aucun popup de diagnostic en production.
         }
     }
 
@@ -563,9 +583,29 @@ public class WebActivity extends Activity {
                 || value.contains("post_type=product");
     }
 
-    private void returnToNativeHome() {
+    private void openNativeScreen(
+            String screen,
+            String key,
+            String value
+    ) {
         Intent intent =
-                new Intent(this, MainActivity.class);
+                new Intent(
+                        this,
+                        MainActivity.class
+                );
+
+        intent.putExtra(
+                "screen",
+                screen
+        );
+
+        if (key != null &&
+                value != null) {
+            intent.putExtra(
+                    key,
+                    value
+            );
+        }
 
         intent.addFlags(
                 Intent.FLAG_ACTIVITY_CLEAR_TOP |
@@ -576,12 +616,176 @@ public class WebActivity extends Activity {
         finish();
     }
 
+    private void returnToNativeHome() {
+        openNativeScreen(
+                "home",
+                null,
+                null
+        );
+    }
+
+    private String commerceSlugAfter(
+            String path,
+            String marker
+    ) {
+        if (path == null ||
+                marker == null) {
+            return null;
+        }
+
+        int index =
+                path.indexOf(marker);
+
+        if (index < 0) {
+            return null;
+        }
+
+        String tail =
+                path.substring(
+                        index + marker.length()
+                );
+
+        if (tail.startsWith("/")) {
+            tail =
+                    tail.substring(1);
+        }
+
+        int slash =
+                tail.indexOf("/");
+
+        if (slash >= 0) {
+            tail =
+                    tail.substring(0, slash);
+        }
+
+        tail = tail.trim();
+
+        return tail.isEmpty()
+                ? null
+                : tail;
+    }
+
+    private boolean routeCommerceToNative(
+            Uri uri
+    ) {
+        if (uri == null ||
+                !isLudorumHost(uri)) {
+            return false;
+        }
+
+        String path =
+                pathOf(uri);
+
+        String productSlug =
+                commerceSlugAfter(
+                        path,
+                        "/produit/"
+                );
+
+        if (productSlug == null) {
+            productSlug =
+                    commerceSlugAfter(
+                            path,
+                            "/product/"
+                    );
+        }
+
+        if (productSlug != null) {
+            if (allowProductPage &&
+                    uri.toString().equalsIgnoreCase(
+                            initialUrl
+                    )) {
+                return false;
+            }
+
+            openNativeScreen(
+                    "product",
+                    "product_slug",
+                    productSlug
+            );
+            return true;
+        }
+
+        String categorySlug =
+                commerceSlugAfter(
+                        path,
+                        "/categorie-produit/"
+                );
+
+        if (categorySlug == null) {
+            categorySlug =
+                    commerceSlugAfter(
+                            path,
+                            "/product-category/"
+                    );
+        }
+
+        if (categorySlug != null) {
+            openNativeScreen(
+                    "category",
+                    "category_slug",
+                    categorySlug
+            );
+            return true;
+        }
+
+        String query =
+                uri.getQueryParameter("s");
+
+        String postType =
+                uri.getQueryParameter("post_type");
+
+        if (query != null &&
+                !query.trim().isEmpty() &&
+                (postType == null ||
+                 postType.isEmpty() ||
+                 postType.toLowerCase(
+                         java.util.Locale.ROOT
+                 ).contains("product"))) {
+            openNativeScreen(
+                    "search",
+                    "search_query",
+                    query
+            );
+            return true;
+        }
+
+        String value =
+                uri.toString()
+                        .toLowerCase(
+                                java.util.Locale.ROOT
+                        );
+
+        if (path.contains("/boutique")
+                || path.contains("/shop")
+                || value.contains("catalogue-woocommerce")
+                || value.contains("woocommerce-technique")
+                || value.contains("boutique-technique")
+                || value.contains("post_type=product")) {
+            openNativeScreen(
+                    "shop",
+                    null,
+                    null
+            );
+            return true;
+        }
+
+        return false;
+    }
+
+
     private boolean handle(Uri uri) {
         if (uri == null || uri.getScheme() == null) return false;
 
         String scheme = uri.getScheme().toLowerCase();
 
         if (scheme.equals("http") || scheme.equals("https")) {
+            // Tous les liens commerciaux Ludorum sont traduits vers la
+            // boutique native. Compte, Panier et Checkout restent WebView.
+            if (routeCommerceToNative(uri)) {
+                return true;
+            }
+
             // Le Panier n'est pas une mini-boutique WordPress.
             // Il ne peut naviguer que vers le panier, le compte et le checkout.
             if (cartMode && isLudorumHost(uri) && !isCartAllowed(uri)) {
@@ -640,17 +844,38 @@ public class WebActivity extends Activity {
                 startActivity(
                         new Intent(Intent.ACTION_VIEW, uri)
                 );
-            } catch (ActivityNotFoundException error) {
-                Toast.makeText(
-                        this,
-                        "Aucune application compatible.",
-                        Toast.LENGTH_SHORT
-                ).show();
+            } catch (ActivityNotFoundException ignored) {
+                // Aucun popup : on reste simplement dans Ludorum.
             }
             return true;
         }
 
         return true;
+    }
+
+    private final class AppBridge {
+        @JavascriptInterface
+        public void cartChanged() {
+            runOnUiThread(
+                    () -> {
+                        if (cartTicker == null) return;
+
+                        cartTicker.postDelayed(
+                                () -> cartTicker.refresh(true),
+                                850
+                        );
+                    }
+            );
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        if (cartTicker != null) {
+            cartTicker.refresh(true);
+        }
     }
 
     private final class Client extends WebViewClient {
@@ -702,6 +927,22 @@ public class WebActivity extends Activity {
         }
 
         @Override
+        public void onPageCommitVisible(
+                WebView view,
+                String url
+        ) {
+            // Skin Ludorum injecté dès le premier affichage visible :
+            // le panier paraît chargé plus rapidement.
+            applyAppPolish(view);
+
+            if (cartTicker != null) {
+                cartTicker.refresh();
+            }
+
+            super.onPageCommitVisible(view, url);
+        }
+
+        @Override
         public void onPageFinished(WebView view, String url) {
             CookieManager.getInstance().flush();
             progress.setVisibility(View.GONE);
@@ -711,9 +952,17 @@ public class WebActivity extends Activity {
                 current = Uri.parse(url);
             } catch (Exception ignored) {}
 
-            if ((cartMode && current != null && !isCartAllowed(current))
-                    || (accountMode && current != null && !isAccountAllowed(current))
-                    || (current != null && looksLikeTechnicalShop(current))) {
+            if (current != null &&
+                    routeCommerceToNative(current)) {
+                return;
+            }
+
+            if ((cartMode &&
+                    current != null &&
+                    !isCartAllowed(current))
+                    || (accountMode &&
+                    current != null &&
+                    !isAccountAllowed(current))) {
                 returnToNativeHome();
                 return;
             }
@@ -721,6 +970,11 @@ public class WebActivity extends Activity {
             updateJourneyMode(url);
             updateBottomNav(url);
             applyAppPolish(view);
+
+            if (cartTicker != null) {
+                cartTicker.refresh(true);
+            }
+
             super.onPageFinished(view, url);
         }
     }

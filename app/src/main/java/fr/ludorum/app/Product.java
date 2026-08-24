@@ -6,6 +6,8 @@ import org.json.JSONObject;
 final class Product {
     int id;
     String name = "";
+    String slug = "";
+    String shortDescription = "";
     String type = "simple";
     String permalink = "";
     String imageUrl = "";
@@ -23,6 +25,8 @@ final class Product {
         Product p = new Product();
         p.id = o.optInt("id");
         p.name = o.optString("name", "Produit");
+        p.slug = o.optString("slug", "");
+        p.shortDescription = o.optString("short_description", "");
         p.type = o.optString("type", "simple");
         p.permalink = o.optString("permalink", "");
         p.onSale = o.optBoolean("on_sale", false);

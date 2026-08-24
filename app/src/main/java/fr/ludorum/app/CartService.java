@@ -31,9 +31,28 @@ final class CartService {
     private static final Handler MAIN =
             new Handler(Looper.getMainLooper());
 
+    private static final long AMOUNT_CACHE_MS = 650L;
+
+    private static volatile long lastAmountAt = 0L;
+    private static volatile long lastAmount = 0L;
+    private static volatile int lastMinorUnit = 2;
+    private static volatile String lastCurrencyCode = "EUR";
+
+    private static void invalidateAmountCache() {
+        lastAmountAt = 0L;
+    }
+
     interface Callback {
         void onSuccess(int itemsCount);
         void onError(String message);
+    }
+
+    interface AmountCallback {
+        void onResult(
+                long minorAmount,
+                int minorUnit,
+                String currencyCode
+        );
     }
 
     static void addSimpleProduct(
@@ -67,7 +86,7 @@ final class CartService {
                 );
                 connection.setRequestProperty("Accept", "application/json");
                 connection.setRequestProperty("X-Requested-With", "XMLHttpRequest");
-                connection.setRequestProperty("User-Agent", "LudorumAndroid/1.0.0");
+                connection.setRequestProperty("User-Agent", "LudorumAndroid/1.0.3");
 
                 if (existingCookies != null &&
                         !existingCookies.trim().isEmpty()) {
@@ -133,17 +152,6 @@ final class CartService {
                     );
                 }
 
-                String verificationCookies =
-                        mergeCookies(
-                                existingCookies,
-                                setCookies
-                        );
-
-                int itemsCount =
-                        verifyCartCount(
-                                verificationCookies
-                        );
-
                 MAIN.post(() -> {
                     for (String cookie : setCookies) {
                         try {
@@ -155,7 +163,12 @@ final class CartService {
                     }
 
                     cookieManager.flush();
-                    callback.onSuccess(itemsCount);
+                    invalidateAmountCache();
+
+                    // La réponse AJAX contient fragments/cart_hash :
+                    // l'ajout WooCommerce est déjà confirmé.
+                    // On ne bloque plus l'interface avec un second GET.
+                    callback.onSuccess(-1);
                 });
 
             } catch (Exception error) {
@@ -185,6 +198,170 @@ final class CartService {
         });
     }
 
+    static void getProductsTtc(
+            AmountCallback callback
+    ) {
+        long now =
+                System.currentTimeMillis();
+
+        if (now - lastAmountAt <= AMOUNT_CACHE_MS) {
+            long amount = lastAmount;
+            int minorUnit = lastMinorUnit;
+            String currencyCode = lastCurrencyCode;
+
+            MAIN.post(
+                    () -> callback.onResult(
+                            amount,
+                            minorUnit,
+                            currencyCode
+                    )
+            );
+            return;
+        }
+
+        CookieManager cookieManager =
+                CookieManager.getInstance();
+
+        String cookies =
+                cookieManager.getCookie(BASE);
+
+        EXECUTOR.execute(() -> {
+            HttpURLConnection connection = null;
+
+            long amount = 0L;
+            int minorUnit = 2;
+            String currencyCode = "EUR";
+
+            try {
+                connection =
+                        (HttpURLConnection)
+                                new URL(CART_API)
+                                        .openConnection();
+
+                connection.setConnectTimeout(7000);
+                connection.setReadTimeout(9000);
+                connection.setRequestMethod("GET");
+                connection.setUseCaches(true);
+                connection.setRequestProperty(
+                        "Accept",
+                        "application/json"
+                );
+                connection.setRequestProperty(
+                        "Connection",
+                        "keep-alive"
+                );
+                connection.setRequestProperty(
+                        "User-Agent",
+                        "LudorumAndroid/1.0.3"
+                );
+
+                if (cookies != null &&
+                        !cookies.trim().isEmpty()) {
+                    connection.setRequestProperty(
+                            "Cookie",
+                            cookies
+                    );
+                }
+
+                int status =
+                        connection.getResponseCode();
+
+                if (status >= 200 &&
+                        status < 300) {
+                    JSONObject cart =
+                            new JSONObject(
+                                    read(
+                                            connection.getInputStream()
+                                    )
+                            );
+
+                    JSONObject totals =
+                            cart.optJSONObject("totals");
+
+                    if (totals != null) {
+                        long items =
+                                parseMinor(
+                                        totals.optString(
+                                                "total_items",
+                                                "0"
+                                        )
+                                );
+
+                        long itemsTax =
+                                parseMinor(
+                                        totals.optString(
+                                                "total_items_tax",
+                                                "0"
+                                        )
+                                );
+
+                        // Total TTC des PRODUITS uniquement.
+                        // Les frais de livraison ne sont jamais ajoutés ici.
+                        amount =
+                                Math.max(
+                                        0L,
+                                        items + itemsTax
+                                );
+
+                        minorUnit =
+                                totals.optInt(
+                                        "currency_minor_unit",
+                                        2
+                                );
+
+                        currencyCode =
+                                totals.optString(
+                                        "currency_code",
+                                        "EUR"
+                                );
+                    }
+                }
+
+            } catch (Exception ignored) {
+                amount = 0L;
+                minorUnit = 2;
+                currencyCode = "EUR";
+
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                }
+            }
+
+            lastAmount = amount;
+            lastMinorUnit = minorUnit;
+            lastCurrencyCode = currencyCode;
+            lastAmountAt = System.currentTimeMillis();
+
+            final long finalAmount = amount;
+            final int finalMinorUnit = minorUnit;
+            final String finalCurrencyCode = currencyCode;
+
+            MAIN.post(
+                    () -> callback.onResult(
+                            finalAmount,
+                            finalMinorUnit,
+                            finalCurrencyCode
+                    )
+            );
+        });
+    }
+
+    private static long parseMinor(
+            String raw
+    ) {
+        try {
+            return Long.parseLong(
+                    raw == null ||
+                    raw.trim().isEmpty()
+                            ? "0"
+                            : raw.trim()
+            );
+        } catch (Exception ignored) {
+            return 0L;
+        }
+    }
+
     private static int verifyCartCount(
             String cookies
     ) {
@@ -200,7 +377,7 @@ final class CartService {
             connection.setReadTimeout(12000);
             connection.setRequestMethod("GET");
             connection.setRequestProperty("Accept", "application/json");
-            connection.setRequestProperty("User-Agent", "LudorumAndroid/1.0.0");
+            connection.setRequestProperty("User-Agent", "LudorumAndroid/1.0.3");
 
             if (cookies != null &&
                     !cookies.trim().isEmpty()) {
