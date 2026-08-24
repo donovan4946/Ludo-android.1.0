@@ -36,5 +36,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ludorum-android-v1.0.8-cart-remove-fix-debug
+          name: ludorum-android-v1.0.11-safe-perf-qa-debug
           path: app/build/outputs/apk/debug/app-debug.apk
