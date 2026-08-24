@@ -25,9 +25,16 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 final class CartService {
-    private static final String BASE = "https://ludorum.fr";
-    private static final String CART_ADD_API = CART_API + "/add-item";
-    private static final String CART_API = BASE + "/wp-json/wc/store/v1/cart";
+    private static final String BASE =
+            "https://ludorum.fr";
+
+    private static final String CART_API =
+            BASE +
+            "/wp-json/wc/store/v1/cart";
+
+    private static final String CART_ADD_API =
+            CART_API +
+            "/add-item";
 
     private static final ExecutorService EXECUTOR =
             Executors.newSingleThreadExecutor();
@@ -301,7 +308,7 @@ final class CartService {
             );
             connection.setRequestProperty(
                     "User-Agent",
-                    "LudorumAndroid/1.0.11"
+                    "LudorumAndroid/1.0.12"
             );
 
             if (cookies != null &&
@@ -448,7 +455,7 @@ final class CartService {
             );
             connection.setRequestProperty(
                     "User-Agent",
-                    "LudorumAndroid/1.0.11"
+                    "LudorumAndroid/1.0.12"
             );
 
             if (cookies != null &&
@@ -658,7 +665,7 @@ final class CartService {
                 );
                 connection.setRequestProperty(
                         "User-Agent",
-                        "LudorumAndroid/1.0.11"
+                        "LudorumAndroid/1.0.12"
                 );
 
                 if (cookies != null &&
@@ -783,7 +790,7 @@ final class CartService {
             connection.setReadTimeout(12000);
             connection.setRequestMethod("GET");
             connection.setRequestProperty("Accept", "application/json");
-            connection.setRequestProperty("User-Agent", "LudorumAndroid/1.0.11");
+            connection.setRequestProperty("User-Agent", "LudorumAndroid/1.0.12");
 
             if (cookies != null &&
                     !cookies.trim().isEmpty()) {
