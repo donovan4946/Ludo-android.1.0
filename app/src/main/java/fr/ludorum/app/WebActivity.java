@@ -255,7 +255,7 @@ public class WebActivity extends Activity {
 
         settings.setUserAgentString(
                 settings.getUserAgentString() +
-                " LudorumAndroid/1.0.4"
+                " LudorumAndroid/1.0.5"
         );
 
         CookieManager cookies = CookieManager.getInstance();
@@ -870,15 +870,6 @@ public class WebActivity extends Activity {
         }
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-
-        if (cartTicker != null) {
-            cartTicker.refresh(true);
-        }
-    }
-
     private final class Client extends WebViewClient {
         @Override
         public WebResourceResponse shouldInterceptRequest(
@@ -1147,7 +1138,14 @@ public class WebActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (web != null) web.onResume();
+
+        if (web != null) {
+            web.onResume();
+        }
+
+        if (cartTicker != null) {
+            cartTicker.refresh(true);
+        }
     }
 
     @Override
