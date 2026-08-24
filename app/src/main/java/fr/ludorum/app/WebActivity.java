@@ -47,6 +47,7 @@ public class WebActivity extends Activity {
     private String initialUrl = BASE;
     private boolean cartMode = false;
     private boolean accountMode = false;
+    private boolean allowProductPage = false;
     private String appScriptCache;
 
     private LinearLayout navHome;
