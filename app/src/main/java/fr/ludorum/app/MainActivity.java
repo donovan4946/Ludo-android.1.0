@@ -1565,7 +1565,7 @@ public class MainActivity extends Activity {
     private void loadCategoryBySlug(
             String slug
     ) {
-        final int generation =
+        final int categoryRequestGeneration =
                 ++screenGeneration;
 
         ApiClient.getCategoryBySlug(
@@ -1575,7 +1575,8 @@ public class MainActivity extends Activity {
                     public void onSuccess(
                             ProductCategory category
                     ) {
-                        if (generation != screenGeneration) {
+                        if (categoryRequestGeneration !=
+                                screenGeneration) {
                             return;
                         }
 
@@ -1592,7 +1593,8 @@ public class MainActivity extends Activity {
                     public void onError(
                             Exception error
                     ) {
-                        if (generation != screenGeneration) {
+                        if (categoryRequestGeneration !=
+                                screenGeneration) {
                             return;
                         }
 

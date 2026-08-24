@@ -52,63 +52,144 @@ final class ApiClient {
     private static final long PRODUCT_CACHE_MS = 30000L;
     private static final long CATEGORY_CACHE_MS = 300000L;
 
-    private static final Map<String, CacheEntry> CACHE =
+    /*
+     * Caches volontairement TYPÉS.
+     * On n'utilise plus un Map<String,Object> générique : cela évite tout
+     * risque de conversion ProductPage <-> List<ProductCategory>.
+     */
+    private static final Map<String, ProductPage> PRODUCT_PAGE_CACHE =
             new ConcurrentHashMap<>();
 
-    private static final class CacheEntry {
-        final long time;
-        final Object value;
+    private static final Map<String, Long> PRODUCT_PAGE_CACHE_TIME =
+            new ConcurrentHashMap<>();
 
-        CacheEntry(
-                long time,
-                Object value
-        ) {
-            this.time = time;
-            this.value = value;
-        }
-    }
+    private static final Map<String, Product> PRODUCT_BY_SLUG_CACHE =
+            new ConcurrentHashMap<>();
 
-    @SuppressWarnings("unchecked")
-    private static <T> T cached(
-            String key,
+    private static final Map<String, Long> PRODUCT_BY_SLUG_CACHE_TIME =
+            new ConcurrentHashMap<>();
+
+    private static final Map<String, ProductCategory> CATEGORY_BY_SLUG_CACHE =
+            new ConcurrentHashMap<>();
+
+    private static final Map<String, Long> CATEGORY_BY_SLUG_CACHE_TIME =
+            new ConcurrentHashMap<>();
+
+    private static volatile List<ProductCategory> topCategoriesCache = null;
+    private static volatile long topCategoriesCacheTime = 0L;
+
+    private static boolean fresh(
+            Long timestamp,
             long ttl
     ) {
-        CacheEntry entry =
-                CACHE.get(key);
-
-        if (entry == null) {
-            return null;
-        }
-
-        if (System.currentTimeMillis() - entry.time > ttl) {
-            CACHE.remove(key);
-            return null;
-        }
-
-        try {
-            return (T) entry.value;
-        } catch (Exception ignored) {
-            CACHE.remove(key);
-            return null;
-        }
+        return timestamp != null &&
+                System.currentTimeMillis() - timestamp <= ttl;
     }
 
-    private static void cache(
-            String key,
-            Object value
+    private static ProductPage getCachedProductPage(
+            String key
     ) {
-        if (key == null ||
-                value == null) {
-            return;
+        Long time = PRODUCT_PAGE_CACHE_TIME.get(key);
+
+        if (!fresh(time, PRODUCTS_CACHE_MS)) {
+            PRODUCT_PAGE_CACHE.remove(key);
+            PRODUCT_PAGE_CACHE_TIME.remove(key);
+            return null;
         }
 
-        CACHE.put(
+        return PRODUCT_PAGE_CACHE.get(key);
+    }
+
+    private static void putCachedProductPage(
+            String key,
+            ProductPage value
+    ) {
+        if (key == null || value == null) return;
+
+        PRODUCT_PAGE_CACHE.put(key, value);
+        PRODUCT_PAGE_CACHE_TIME.put(
                 key,
-                new CacheEntry(
-                        System.currentTimeMillis(),
-                        value
-                )
+                System.currentTimeMillis()
         );
+    }
+
+    private static Product getCachedProduct(
+            String key
+    ) {
+        Long time = PRODUCT_BY_SLUG_CACHE_TIME.get(key);
+
+        if (!fresh(time, PRODUCT_CACHE_MS)) {
+            PRODUCT_BY_SLUG_CACHE.remove(key);
+            PRODUCT_BY_SLUG_CACHE_TIME.remove(key);
+            return null;
+        }
+
+        return PRODUCT_BY_SLUG_CACHE.get(key);
+    }
+
+    private static void putCachedProduct(
+            String key,
+            Product value
+    ) {
+        if (key == null || value == null) return;
+
+        PRODUCT_BY_SLUG_CACHE.put(key, value);
+        PRODUCT_BY_SLUG_CACHE_TIME.put(
+                key,
+                System.currentTimeMillis()
+        );
+    }
+
+    private static ProductCategory getCachedCategory(
+            String key
+    ) {
+        Long time = CATEGORY_BY_SLUG_CACHE_TIME.get(key);
+
+        if (!fresh(time, CATEGORY_CACHE_MS)) {
+            CATEGORY_BY_SLUG_CACHE.remove(key);
+            CATEGORY_BY_SLUG_CACHE_TIME.remove(key);
+            return null;
+        }
+
+        return CATEGORY_BY_SLUG_CACHE.get(key);
+    }
+
+    private static void putCachedCategory(
+            String key,
+            ProductCategory value
+    ) {
+        if (key == null || value == null) return;
+
+        CATEGORY_BY_SLUG_CACHE.put(key, value);
+        CATEGORY_BY_SLUG_CACHE_TIME.put(
+                key,
+                System.currentTimeMillis()
+        );
+    }
+
+    private static List<ProductCategory> getCachedTopCategories() {
+        if (topCategoriesCache == null ||
+                System.currentTimeMillis() -
+                topCategoriesCacheTime >
+                CATEGORY_CACHE_MS) {
+            topCategoriesCache = null;
+            topCategoriesCacheTime = 0L;
+            return null;
+        }
+
+        return new ArrayList<>(topCategoriesCache);
+    }
+
+    private static void putCachedTopCategories(
+            List<ProductCategory> categories
+    ) {
+        if (categories == null) return;
+
+        topCategoriesCache =
+                new ArrayList<>(categories);
+
+        topCategoriesCacheTime =
+                System.currentTimeMillis();
     }
 
     static void getProducts(
@@ -134,9 +215,8 @@ final class ApiClient {
                 "products:" + url;
 
         ProductPage cached =
-                cached(
-                        cacheKey,
-                        PRODUCTS_CACHE_MS
+                getCachedProductPage(
+                        cacheKey
                 );
 
         if (cached != null) {
@@ -176,7 +256,7 @@ final class ApiClient {
                                 pages
                         );
 
-                cache(
+                putCachedProductPage(
                         cacheKey,
                         result
                 );
@@ -205,9 +285,8 @@ final class ApiClient {
                 "product:" + safeSlug;
 
         Product cached =
-                cached(
-                        cacheKey,
-                        PRODUCT_CACHE_MS
+                getCachedProduct(
+                        cacheKey
                 );
 
         if (cached != null) {
@@ -263,7 +342,7 @@ final class ApiClient {
                                 array.optJSONObject(0)
                         );
 
-                cache(
+                putCachedProduct(
                         cacheKey,
                         product
                 );
@@ -298,9 +377,8 @@ final class ApiClient {
                 "category:" + safeSlug;
 
         ProductCategory cached =
-                cached(
-                        cacheKey,
-                        CATEGORY_CACHE_MS
+                getCachedCategory(
+                        cacheKey
                 );
 
         if (cached != null) {
@@ -356,7 +434,7 @@ final class ApiClient {
                                 array.optJSONObject(0)
                         );
 
-                cache(
+                putCachedCategory(
                         cacheKey,
                         category
                 );
@@ -381,14 +459,8 @@ final class ApiClient {
     static void getTopCategories(
             Callback<List<ProductCategory>> callback
     ) {
-        final String cacheKey =
-                "top_categories";
-
         List<ProductCategory> cached =
-                cached(
-                        cacheKey,
-                        CATEGORY_CACHE_MS
-                );
+                getCachedTopCategories();
 
         if (cached != null) {
             MAIN.post(
@@ -434,8 +506,7 @@ final class ApiClient {
                         )
                 );
 
-                cache(
-                        cacheKey,
+                putCachedTopCategories(
                         categories
                 );
 
@@ -487,7 +558,7 @@ final class ApiClient {
         connection.setUseCaches(true);
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("Connection", "keep-alive");
-        connection.setRequestProperty("User-Agent", "LudorumAndroid/1.0.3");
+        connection.setRequestProperty("User-Agent", "LudorumAndroid/1.0.4");
         connection.setInstanceFollowRedirects(true);
         return connection;
     }
