@@ -255,7 +255,7 @@ public class WebActivity extends Activity {
 
         settings.setUserAgentString(
                 settings.getUserAgentString() +
-                " LudorumAndroid/1.0.5"
+                " LudorumAndroid/1.0.7"
         );
 
         CookieManager cookies = CookieManager.getInstance();
@@ -294,19 +294,46 @@ public class WebActivity extends Activity {
     }
 
     private View bottomNavHost() {
-        FrameLayout host = new FrameLayout(this);
-        host.setBackgroundColor(Ui.NAVY);
+        FrameLayout host =
+                new FrameLayout(this);
 
-        View nav = bottomNav();
+        host.setBackgroundColor(
+                Ui.NAVY
+        );
+
+        LinearLayout stripe =
+                Ui.brandStripe(this);
+
+        FrameLayout.LayoutParams stripeParams =
+                new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Ui.dp(this, 4),
+                        Gravity.TOP
+                );
+
+        host.addView(
+                stripe,
+                stripeParams
+        );
+
+        View nav =
+                bottomNav();
 
         FrameLayout.LayoutParams navParams =
                 new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        Ui.dp(this, 70),
+                        Ui.dp(this, 66),
                         Gravity.TOP
                 );
 
-        host.addView(nav, navParams);
+        navParams.topMargin =
+                Ui.dp(this, 4);
+
+        host.addView(
+                nav,
+                navParams
+        );
+
         return host;
     }
 
@@ -320,13 +347,15 @@ public class WebActivity extends Activity {
                 Ui.dp(this, 5)
         );
         bar.setBackground(
-                Ui.roundedStroke(
+                Ui.gradient(
                         Color.WHITE,
-                        Ui.BORDER,
-                        1,
+                        Ui.SOFT,
                         0,
                         this
                 )
+        );
+        bar.setElevation(
+                Ui.dp(this, 14)
         );
 
         navHome =
@@ -666,12 +695,48 @@ public class WebActivity extends Activity {
                 : tail;
     }
 
+    private boolean looksLikeReturnToShop(
+            Uri uri
+    ) {
+        if (uri == null ||
+                !isLudorumHost(uri)) {
+            return false;
+        }
+
+        String path =
+                pathOf(uri);
+
+        String raw =
+                uri.toString()
+                        .toLowerCase(
+                                java.util.Locale.ROOT
+                        );
+
+        return path.equals("/") ||
+                path.equals("/boutique") ||
+                path.equals("/boutique/") ||
+                path.equals("/shop") ||
+                path.equals("/shop/") ||
+                raw.contains("continue-shopping") ||
+                raw.contains("continue_shopping") ||
+                raw.contains("return-to-shop");
+    }
+
     private boolean routeCommerceToNative(
             Uri uri
     ) {
         if (uri == null ||
                 !isLudorumHost(uri)) {
             return false;
+        }
+
+        if (looksLikeReturnToShop(uri)) {
+            openNativeScreen(
+                    "shop",
+                    null,
+                    null
+            );
+            return true;
         }
 
         String path =
@@ -781,6 +846,18 @@ public class WebActivity extends Activity {
         String scheme = uri.getScheme().toLowerCase();
 
         if (scheme.equals("http") || scheme.equals("https")) {
+            // Depuis le panier, "revenir/continuer vers la boutique" doit
+            // toujours ouvrir la Boutique native Ludorum.
+            if (cartMode &&
+                    looksLikeReturnToShop(uri)) {
+                openNativeScreen(
+                        "shop",
+                        null,
+                        null
+                );
+                return true;
+            }
+
             // Tous les liens commerciaux Ludorum sont traduits vers la
             // boutique native. Compte, Panier et Checkout restent WebView.
             if (routeCommerceToNative(uri)) {

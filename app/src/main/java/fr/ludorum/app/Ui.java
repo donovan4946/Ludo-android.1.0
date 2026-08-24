@@ -6,6 +6,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -114,56 +115,278 @@ final class Ui {
         return t;
     }
 
-    static LinearLayout navItem(Context c, int iconRes, String label, boolean active) {
-        LinearLayout box = new LinearLayout(c);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setGravity(Gravity.CENTER);
-        box.setPadding(dp(c, 3), dp(c, 6), dp(c, 3), dp(c, 5));
+    static int navAccent(
+            String label
+    ) {
+        if ("Compte".equals(label)) {
+            return YELLOW;
+        }
 
-        int color = active ? BLUE : NAVY;
+        if ("Favoris".equals(label)) {
+            return RED;
+        }
 
-        ImageView icon = new ImageView(c);
-        icon.setImageResource(iconRes);
-        icon.setColorFilter(color);
-        box.addView(icon, new LinearLayout.LayoutParams(dp(c, 23), dp(c, 23)));
+        return BLUE;
+    }
 
-        TextView txt = text(c, label, 11, color, active);
-        txt.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+    static LinearLayout brandStripe(
+            Context c
+    ) {
+        LinearLayout stripe =
+                new LinearLayout(c);
+
+        stripe.setOrientation(
+                LinearLayout.HORIZONTAL
         );
-        tp.topMargin = dp(c, 3);
-        box.addView(txt, tp);
+
+        int[] colors =
+                new int[]{
+                        BLUE,
+                        YELLOW,
+                        RED
+                };
+
+        for (int color : colors) {
+            View part =
+                    new View(c);
+
+            part.setBackgroundColor(
+                    color
+            );
+
+            stripe.addView(
+                    part,
+                    new LinearLayout.LayoutParams(
+                            0,
+                            dp(c, 4),
+                            1f
+                    )
+            );
+        }
+
+        return stripe;
+    }
+
+    static LinearLayout navItem(
+            Context c,
+            int iconRes,
+            String label,
+            boolean active
+    ) {
+        LinearLayout box =
+                new LinearLayout(c);
+
+        box.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        box.setGravity(
+                Gravity.CENTER
+        );
+
+        box.setPadding(
+                dp(c, 4),
+                dp(c, 5),
+                dp(c, 4),
+                dp(c, 4)
+        );
+
+        int accent =
+                navAccent(label);
+
+        int foreground =
+                active
+                        ? (accent == YELLOW
+                            ? NAVY
+                            : Color.WHITE)
+                        : NAVY;
+
+        ImageView icon =
+                new ImageView(c);
+
+        icon.setImageResource(
+                iconRes
+        );
+
+        icon.setColorFilter(
+                foreground
+        );
+
+        box.addView(
+                icon,
+                new LinearLayout.LayoutParams(
+                        dp(c, 22),
+                        dp(c, 22)
+                )
+        );
+
+        TextView txt =
+                text(
+                        c,
+                        label,
+                        10,
+                        foreground,
+                        active
+                );
+
+        txt.setGravity(
+                Gravity.CENTER
+        );
+
+        LinearLayout.LayoutParams tp =
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                );
+
+        tp.topMargin =
+                dp(c, 2);
+
+        box.addView(
+                txt,
+                tp
+        );
+
+        View marker =
+                new View(c);
+
+        marker.setBackground(
+                rounded(
+                        active
+                                ? (accent == YELLOW
+                                    ? NAVY
+                                    : Color.WHITE)
+                                : accent,
+                        2,
+                        c
+                )
+        );
+
+        LinearLayout.LayoutParams mp =
+                new LinearLayout.LayoutParams(
+                        dp(c, 24),
+                        dp(c, 3)
+                );
+
+        mp.topMargin =
+                dp(c, 4);
+
+        box.addView(
+                marker,
+                mp
+        );
 
         box.setBackground(
                 active
-                        ? rounded(Color.rgb(236, 244, 255), 18, c)
-                        : rounded(Color.WHITE, 18, c)
+                        ? rounded(
+                                accent,
+                                18,
+                                c
+                        )
+                        : rounded(
+                                Color.TRANSPARENT,
+                                18,
+                                c
+                        )
         );
-        box.setTag(new Object[]{icon, txt});
+
+        box.setTag(
+                new Object[]{
+                        icon,
+                        txt,
+                        marker,
+                        accent
+                }
+        );
+
         return box;
     }
 
-    static void setNavActive(LinearLayout item, boolean active) {
-        if (item == null || !(item.getTag() instanceof Object[])) return;
-        Object[] items = (Object[]) item.getTag();
-        if (items.length < 2) return;
+    static void setNavActive(
+            LinearLayout item,
+            boolean active
+    ) {
+        if (item == null ||
+                !(item.getTag() instanceof Object[])) {
+            return;
+        }
 
-        ImageView icon = (ImageView) items[0];
-        TextView txt = (TextView) items[1];
+        Object[] items =
+                (Object[]) item.getTag();
 
-        int color = active ? BLUE : NAVY;
-        icon.setColorFilter(color);
-        txt.setTextColor(color);
-        txt.setTypeface(Typeface.create(
-                active ? "sans-serif-medium" : "sans-serif",
-                Typeface.NORMAL
-        ));
+        if (items.length < 4) {
+            return;
+        }
+
+        ImageView icon =
+                (ImageView) items[0];
+
+        TextView txt =
+                (TextView) items[1];
+
+        View marker =
+                (View) items[2];
+
+        int accent =
+                (Integer) items[3];
+
+        int foreground =
+                active
+                        ? (accent == YELLOW
+                            ? NAVY
+                            : Color.WHITE)
+                        : NAVY;
+
+        icon.setColorFilter(
+                foreground
+        );
+
+        txt.setTextColor(
+                foreground
+        );
+
+        txt.setTypeface(
+                Typeface.create(
+                        active
+                                ? "sans-serif-medium"
+                                : "sans-serif",
+                        Typeface.NORMAL
+                )
+        );
+
+        marker.setBackground(
+                rounded(
+                        active
+                                ? (accent == YELLOW
+                                    ? NAVY
+                                    : Color.WHITE)
+                                : accent,
+                        2,
+                        item.getContext()
+                )
+        );
+
         item.setBackground(
                 active
-                        ? rounded(Color.rgb(236, 244, 255), 18, item.getContext())
-                        : rounded(Color.WHITE, 18, item.getContext())
+                        ? rounded(
+                                accent,
+                                18,
+                                item.getContext()
+                        )
+                        : rounded(
+                                Color.TRANSPARENT,
+                                18,
+                                item.getContext()
+                        )
+        );
+
+        item.setElevation(
+                active
+                        ? dp(
+                            item.getContext(),
+                            5
+                        )
+                        : 0f
         );
     }
 }

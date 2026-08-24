@@ -543,6 +543,12 @@
       #ludorum-cart-premium {
         width: 100%; box-sizing: border-box; padding: 12px 14px 28px;
         font-family: Arial, sans-serif; color: ${NAVY}; background: #fff;
+        display: block !important; visibility: visible !important;
+        opacity: 1 !important; pointer-events: auto !important;
+        position: relative !important; z-index: 2 !important;
+      }
+      #ludorum-cart-premium * {
+        visibility: visible !important;
       }
       .ludo-cart-kicker { font-size: 11px; font-weight: 800; color: ${BLUE}; letter-spacing: .55px; text-transform: uppercase; margin: 2px 2px 4px; }
       .ludo-cart-title { font-size: 27px; line-height: 1.1; font-weight: 850; color: ${NAVY}; margin: 0 2px 7px; }
@@ -606,35 +612,103 @@
   }
 
   function hideOriginalCartChrome(parsed, totals, checkout) {
+    const shell = $('#ludorum-cart-premium');
     const wrappers = new Set();
-    ['form.woocommerce-cart-form', '.woocommerce-cart-form', '.wc-block-cart', '.woocommerce table.shop_table.shop_table_responsive.cart'].forEach((sel) => {
-      $$(sel).forEach((el) => wrappers.add(el));
+
+    // Blocs WooCommerce explicitement connus.
+    [
+      'form.woocommerce-cart-form',
+      '.woocommerce-cart-form',
+      '.wc-block-cart',
+      'table.shop_table.cart',
+      'table.shop_table.shop_table_responsive.cart'
+    ].forEach((selector) => {
+      $$(selector).forEach((el) => wrappers.add(el));
     });
-    if (totals) wrappers.add(totals);
-    const originalCheckout = checkout && checkout.closest('.wc-proceed-to-checkout,.wc-block-cart__submit,.cart_totals,.cart-collaterals');
-    if (originalCheckout) wrappers.add(originalCheckout);
+
+    if (totals) {
+      wrappers.add(totals);
+    }
+
+    const originalCheckout =
+      checkout &&
+      checkout.closest(
+        '.wc-proceed-to-checkout,.wc-block-cart__submit,.cart_totals,.cart-collaterals'
+      );
+
+    if (originalCheckout) {
+      wrappers.add(originalCheckout);
+    }
+
+    // Pour les templates personnalisés, on masque seulement la ligne/article
+    // produit — jamais ses grands parents.
     parsed.forEach((product) => {
-      let node = product.root;
-      const specific = node.closest && node.closest('.cart_item,.woocommerce-cart-form__cart-item,.wc-block-cart-items__row,tr,li');
-      if (specific) node = specific;
-      // if still too narrow, climb once or twice to encompass the visible row/card
-      for (let i = 0; i < 3 && node && node.parentElement; i += 1) {
-        const r = node.getBoundingClientRect();
-        if (r.width > innerWidth * 0.75 && r.height > 110) break;
-        const parent = node.parentElement;
-        const pr = parent.getBoundingClientRect();
-        if (pr.width < r.width || pr.height > innerHeight * 0.75) break;
-        node = parent;
-      }
-      wrappers.add(node);
+      if (!product || !product.root) return;
+
+      const specific =
+        product.root.closest &&
+        product.root.closest(
+          '.cart_item,.woocommerce-cart-form__cart-item,.wc-block-cart-items__row,tr,li'
+        );
+
+      wrappers.add(
+        specific || product.root
+      );
     });
 
     wrappers.forEach((el) => {
       if (!el) return;
-      el.classList.add('ludo-original-cart-hidden');
-      el.style.setProperty('display', 'none', 'important');
-      el.style.setProperty('pointer-events', 'none', 'important');
+
+      // Sécurité absolue : ne jamais masquer le shell premium,
+      // ni un parent qui le contient.
+      if (
+        el === shell ||
+        (shell && el.contains(shell)) ||
+        (shell && shell.contains(el))
+      ) {
+        return;
+      }
+
+      el.classList.add(
+        'ludo-original-cart-hidden'
+      );
+
+      el.style.setProperty(
+        'display',
+        'none',
+        'important'
+      );
+
+      el.style.setProperty(
+        'pointer-events',
+        'none',
+        'important'
+      );
     });
+
+    if (shell) {
+      shell.classList.remove(
+        'ludo-original-cart-hidden'
+      );
+
+      shell.style.setProperty(
+        'display',
+        'block',
+        'important'
+      );
+
+      shell.style.setProperty(
+        'visibility',
+        'visible',
+        'important'
+      );
+
+      shell.style.setProperty(
+        'opacity',
+        '1',
+        'important'
+      );
+    }
   }
 
   function rebuildPremiumCart() {
@@ -652,6 +726,18 @@
       const signature = cartSignature(parsed, summary);
 
       let shell = $('#ludorum-cart-premium');
+
+      // WooCommerce peut brièvement reconstruire son DOM pendant une mise à jour.
+      // Si notre panier existe déjà, on le garde visible au lieu de le supprimer
+      // et de fabriquer un écran vide.
+      if (shell && !parsed.length) {
+        shell.style.setProperty('display', 'block', 'important');
+        shell.style.setProperty('visibility', 'visible', 'important');
+        shell.style.setProperty('opacity', '1', 'important');
+        hideCoupon();
+        return;
+      }
+
       if (shell && signature === lastCartSignature) {
         hideOriginalCartChrome(parsed, totals, checkout);
         guardCartLinks();
@@ -684,7 +770,7 @@
         const back = document.createElement('button');
         back.className = 'ludo-return';
         back.textContent = 'Découvrir les produits';
-        back.addEventListener('click', () => { location.href = 'https://ludorum.fr/'; });
+        back.addEventListener('click', () => { location.href = 'https://ludorum.fr/boutique/'; });
         empty.appendChild(back);
         shell.appendChild(empty);
       }
@@ -775,7 +861,6 @@
         card.append(name, unit, remove, bottom);
         shell.appendChild(card);
 
-        product.root.classList.add('ludo-original-cart-hidden');
       });
 
       if (parsed.length) {
@@ -803,19 +888,34 @@
         shell.appendChild(block);
       }
 
-      // Insert the premium shell just after the shipping/progress hero if present, otherwise in the main cart host.
-      const hero = $$('.elementor-widget-container,.elementor-element,.woocommerce,.entry-content,main,article')
-        .find((el) => {
-          const t = low(text(el));
-          return t.includes('plus que') && t.includes('livraison offerte');
-        });
-      const host = $('.woocommerce') || $('.entry-content') || $('main') || $('article') || document.body;
-      if (hero && hero.parentElement) {
-        const afterHero = hero.closest('section,div');
-        if (afterHero && afterHero.parentElement) afterHero.insertAdjacentElement('afterend', shell);
-        else hero.insertAdjacentElement('afterend', shell);
+      // Le shell premium doit être le FRÈRE du panier WooCommerce,
+      // jamais son enfant. Ainsi le masquage du panier original ne peut
+      // plus faire disparaître l'interface Ludorum.
+      const originalAnchor =
+        $('form.woocommerce-cart-form') ||
+        $('.woocommerce-cart-form') ||
+        $('.wc-block-cart') ||
+        $('table.shop_table.cart') ||
+        (parsed.length ? parsed[0].root : null) ||
+        totals;
+
+      if (originalAnchor && originalAnchor.parentElement) {
+        originalAnchor.parentElement.insertBefore(
+          shell,
+          originalAnchor
+        );
       } else {
-        host.insertBefore(shell, host.firstChild);
+        const host =
+          $('.woocommerce') ||
+          $('.entry-content') ||
+          $('main') ||
+          $('article') ||
+          document.body;
+
+        host.insertBefore(
+          shell,
+          host.firstChild
+        );
       }
 
       // Hide the original WooCommerce cart UI after extraction so only the Ludorum premium UI remains visible.
@@ -839,12 +939,68 @@
     });
   }
 
+  function forceReturnToShopLinks() {
+    if (!isCart()) return;
+
+    $$('a,button').forEach((el) => {
+      const label = low(
+        `${text(el)} ${el.getAttribute('aria-label') || ''}`
+      );
+
+      const href = low(
+        el.href ||
+        el.getAttribute('href') ||
+        ''
+      );
+
+      const isReturnText =
+        label.includes('revenir vers la boutique') ||
+        label.includes('retour à la boutique') ||
+        label.includes('retour boutique') ||
+        label.includes('continuer mes achats') ||
+        label.includes('continuer les achats') ||
+        label.includes('continue shopping');
+
+      const isShopHref =
+        href.includes('/boutique') ||
+        href.includes('/shop') ||
+        href.includes('return-to-shop') ||
+        href.includes('continue-shopping');
+
+      if (!isReturnText && !isShopHref) return;
+
+      if (el.tagName === 'A') {
+        el.setAttribute(
+          'href',
+          'https://ludorum.fr/boutique/'
+        );
+      }
+
+      if (!el.dataset.ludorumShopBound) {
+        el.dataset.ludorumShopBound = '1';
+
+        el.addEventListener(
+          'click',
+          (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            location.href =
+              'https://ludorum.fr/boutique/';
+          },
+          true
+        );
+      }
+    });
+  }
+
   function run() {
     addGlobalCss();
     cleanAccountCopy();
     accountTabs();
     hideCoupon();
     guardCartLinks();
+    forceReturnToShopLinks();
     buildSocialDock();
     rebuildPremiumCart();
   }

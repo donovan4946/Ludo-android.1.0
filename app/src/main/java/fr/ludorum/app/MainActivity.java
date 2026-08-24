@@ -314,19 +314,46 @@ public class MainActivity extends Activity {
     }
 
     private View buildBottomNavHost() {
-        FrameLayout host = new FrameLayout(this);
-        host.setBackgroundColor(Ui.NAVY);
+        FrameLayout host =
+                new FrameLayout(this);
 
-        View nav = buildBottomNav();
+        host.setBackgroundColor(
+                Ui.NAVY
+        );
+
+        LinearLayout stripe =
+                Ui.brandStripe(this);
+
+        FrameLayout.LayoutParams stripeParams =
+                new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Ui.dp(this, 4),
+                        Gravity.TOP
+                );
+
+        host.addView(
+                stripe,
+                stripeParams
+        );
+
+        View nav =
+                buildBottomNav();
 
         FrameLayout.LayoutParams navParams =
                 new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        Ui.dp(this, 70),
+                        Ui.dp(this, 66),
                         Gravity.TOP
                 );
 
-        host.addView(nav, navParams);
+        navParams.topMargin =
+                Ui.dp(this, 4);
+
+        host.addView(
+                nav,
+                navParams
+        );
+
         return host;
     }
 
@@ -341,15 +368,16 @@ public class MainActivity extends Activity {
                 Ui.dp(this, 5)
         );
         bar.setBackground(
-                Ui.roundedStroke(
+                Ui.gradient(
                         Color.WHITE,
-                        Ui.BORDER,
-                        1,
+                        Ui.SOFT,
                         0,
                         this
                 )
         );
-        bar.setElevation(Ui.dp(this, 12));
+        bar.setElevation(
+                Ui.dp(this, 14)
+        );
 
         navHome =
                 Ui.navItem(this, R.drawable.ic_home, "Accueil", true);
@@ -1280,18 +1308,20 @@ public class MainActivity extends Activity {
         String requestedScreen =
                 intent.getStringExtra("screen");
 
-        if ("favorites".equals(requestedScreen)) {
-            showFavorites();
-            return;
-        }
-
-        if ("shop".equals(requestedScreen)) {
+        if ("shop".equals(requestedScreen) ||
+                "boutique".equals(requestedScreen) ||
+                "continue_shopping".equals(requestedScreen)) {
             showCatalogue(
                     "Boutique",
                     "Tous les produits Ludorum.",
                     "",
                     1
             );
+            return;
+        }
+
+        if ("favorites".equals(requestedScreen)) {
+            showFavorites();
             return;
         }
 
@@ -1367,7 +1397,9 @@ public class MainActivity extends Activity {
             return;
         }
 
-        if (path.contains("/favoris")) {
+        if (path.equals("/favoris") ||
+                path.equals("/favoris/") ||
+                path.startsWith("/favoris/")) {
             showFavorites();
             return;
         }
