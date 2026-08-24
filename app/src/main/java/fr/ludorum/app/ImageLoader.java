@@ -112,7 +112,7 @@ final class ImageLoader {
             );
             connection.setRequestProperty(
                     "User-Agent",
-                    "LudorumAndroid/1.0.7"
+                    "LudorumAndroid/1.0.8"
             );
 
             try (

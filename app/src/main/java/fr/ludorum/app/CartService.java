@@ -86,7 +86,7 @@ final class CartService {
                 );
                 connection.setRequestProperty("Accept", "application/json");
                 connection.setRequestProperty("X-Requested-With", "XMLHttpRequest");
-                connection.setRequestProperty("User-Agent", "LudorumAndroid/1.0.7");
+                connection.setRequestProperty("User-Agent", "LudorumAndroid/1.0.8");
 
                 if (existingCookies != null &&
                         !existingCookies.trim().isEmpty()) {
@@ -252,7 +252,7 @@ final class CartService {
                 );
                 connection.setRequestProperty(
                         "User-Agent",
-                        "LudorumAndroid/1.0.7"
+                        "LudorumAndroid/1.0.8"
                 );
 
                 if (cookies != null &&
@@ -377,7 +377,7 @@ final class CartService {
             connection.setReadTimeout(12000);
             connection.setRequestMethod("GET");
             connection.setRequestProperty("Accept", "application/json");
-            connection.setRequestProperty("User-Agent", "LudorumAndroid/1.0.7");
+            connection.setRequestProperty("User-Agent", "LudorumAndroid/1.0.8");
 
             if (cookies != null &&
                     !cookies.trim().isEmpty()) {

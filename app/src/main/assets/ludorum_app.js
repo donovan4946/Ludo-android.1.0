@@ -375,9 +375,42 @@
   }
 
   function findRemove(root) {
-    const known = root.querySelector('a.remove,a[href*=remove_item],button[name*=remove],button[class*=remove],[class*=remove-item],[class*=remove_item]');
+    const known = root.querySelector(
+      [
+        'a[href*="remove_item"]',
+        'a.remove',
+        '.wc-block-cart-item__remove-link',
+        '.wc-block-components-product-remove-button',
+        'button[name*="remove"]',
+        'button[class*="remove"]',
+        '[class*="remove-item"]',
+        '[class*="remove_item"]',
+        '[aria-label*="Retirer"]',
+        '[aria-label*="retirer"]',
+        '[aria-label*="Supprimer"]',
+        '[aria-label*="supprimer"]'
+      ].join(',')
+    );
+
     if (known) return known;
-    return $$('a,button,span', root).find((el) => ['×', '✕', '✖', 'x'].includes(low(text(el)))) || null;
+
+    return $$('a,button,span', root).find((el) => {
+      const value = low(text(el));
+      return ['×', '✕', '✖', 'x'].includes(value);
+    }) || null;
+  }
+
+  function removeHref(removeControl) {
+    if (!removeControl) return '';
+
+    const href =
+      removeControl.href ||
+      removeControl.getAttribute('href') ||
+      '';
+
+    return typeof href === 'string'
+      ? href.trim()
+      : '';
   }
 
   function findItemFromQty(input) {
@@ -468,11 +501,103 @@
       root,
       qty,
       remove,
+      removeUrl: removeHref(remove),
       imageUrl: image ? (image.currentSrc || image.src || '') : '',
       name: extractName(root),
       unitPrice: money[0] || '',
       subtotal: money[money.length - 1] || money[0] || ''
     };
+  }
+
+  function removeCartItem(product, card, button) {
+    if (!product || !button || button.dataset.removing === '1') {
+      return;
+    }
+
+    button.dataset.removing = '1';
+    button.disabled = true;
+    button.textContent = '…';
+    button.setAttribute('aria-busy', 'true');
+
+    if (card) {
+      card.classList.add('is-removing');
+    }
+
+    const url =
+      (product.removeUrl || '').trim();
+
+    // WooCommerce classique :
+    // on utilise directement l'URL signée remove_item + nonce.
+    // Cela ne dépend d'aucun bouton caché ou handler JS tiers.
+    if (
+      url &&
+      (
+        url.includes('remove_item=') ||
+        url.includes('remove-item=') ||
+        url.includes('remove_item%')
+      )
+    ) {
+      try {
+        notifyCartChanged();
+
+        window.location.assign(url);
+        return;
+      } catch (_) {
+        // Continue vers le fallback ci-dessous.
+      }
+    }
+
+    // WooCommerce Blocks / templates JS :
+    // le vrai contrôle React/Woo reste dans le DOM mais est visuellement caché.
+    if (product.remove) {
+      try {
+        product.remove.disabled = false;
+        product.remove.removeAttribute('disabled');
+
+        product.remove.dispatchEvent(
+          new MouseEvent(
+            'click',
+            {
+              bubbles: true,
+              cancelable: true,
+              view: window
+            }
+          )
+        );
+
+        setTimeout(notifyCartChanged, 450);
+
+        // Si Woo n'a pas reconstruit le panier après 2,5 s,
+        // on rend le bouton disponible au lieu de le laisser bloqué.
+        setTimeout(() => {
+          if (
+            button.isConnected &&
+            button.dataset.removing === '1'
+          ) {
+            button.dataset.removing = '0';
+            button.disabled = false;
+            button.textContent = '×';
+            button.removeAttribute('aria-busy');
+
+            if (card) {
+              card.classList.remove('is-removing');
+            }
+          }
+        }, 2500);
+
+        return;
+      } catch (_) {}
+    }
+
+    // Aucun mécanisme Woo trouvé : restaure le bouton proprement.
+    button.dataset.removing = '0';
+    button.disabled = false;
+    button.textContent = '×';
+    button.removeAttribute('aria-busy');
+
+    if (card) {
+      card.classList.remove('is-removing');
+    }
   }
 
   function findUpdateButton() {
@@ -560,9 +685,27 @@
       }
       .ludo-cart-image { width: 88px; height: 88px; object-fit: contain; border-radius: 14px; border: 1px solid #EDF1F5; background: #F7F9FC; padding: 7px; box-sizing: border-box; grid-row: 1 / span 4; }
       .ludo-cart-image-placeholder { width: 88px; height: 88px; border-radius: 14px; border: 1px solid #EDF1F5; background: linear-gradient(135deg,#F7F9FC,#FFF); grid-row: 1 / span 4; }
-      .ludo-cart-name { padding-right: 38px; font-size: 16px; line-height: 1.25; font-weight: 800; color: ${NAVY}; margin: 1px 0 5px; }
+      .ludo-cart-name { padding-right: 50px; font-size: 16px; line-height: 1.25; font-weight: 800; color: ${NAVY}; margin: 1px 0 5px; }
       .ludo-cart-unit { font-size: 17px; line-height: 1.2; font-weight: 850; color: ${BLUE}; margin-bottom: 10px; }
-      .ludo-cart-remove { position: absolute; top: 10px; right: 10px; width: 34px; height: 34px; border: 1px solid #F4CACA; border-radius: 11px; background: #FFF3F3; color: ${RED}; font-size: 23px; font-weight: 800; line-height: 30px; text-align: center; padding: 0; }
+      .ludo-cart-remove {
+        position: absolute; top: 9px; right: 9px;
+        width: 42px; height: 42px; min-width: 42px; min-height: 42px;
+        border: 1px solid #F4CACA; border-radius: 13px;
+        background: #FFF3F3; color: ${RED};
+        font-size: 26px; font-weight: 850; line-height: 38px;
+        text-align: center; padding: 0; z-index: 20;
+        touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+      }
+      .ludo-cart-remove:active { transform: scale(.94); }
+      .ludo-cart-remove:disabled { opacity: .68; }
+      .ludo-cart-card.is-removing {
+        opacity: .55 !important;
+        pointer-events: none !important;
+        transition: opacity .16s ease !important;
+      }
+      .ludo-cart-card.is-removing .ludo-cart-remove {
+        pointer-events: auto !important;
+      }
       .ludo-cart-bottom { grid-column: 2; display: flex; align-items: end; justify-content: space-between; gap: 10px; margin-top: 2px; }
       .ludo-qty-block { display: flex; flex-direction: column; gap: 5px; }
       .ludo-label { font-size: 10px; font-weight: 800; letter-spacing: .35px; text-transform: uppercase; color: ${MUTED}; }
@@ -804,11 +947,15 @@
         remove.className = 'ludo-cart-remove';
         remove.textContent = '×';
         remove.setAttribute('aria-label', `Retirer ${product.name}`);
-        remove.addEventListener('click', () => {
-          if (product.remove) {
-            product.remove.click();
-            setTimeout(notifyCartChanged, 700);
-          }
+        remove.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+
+          removeCartItem(
+            product,
+            card,
+            remove
+          );
         });
 
         const bottom = document.createElement('div');
