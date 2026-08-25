@@ -708,45 +708,6 @@ public class MainActivity extends Activity {
         );
     }
 
-    private void addShippingStrip() {
-        LinearLayout strip = new LinearLayout(this);
-        strip.setOrientation(LinearLayout.HORIZONTAL);
-        strip.setGravity(Gravity.CENTER_VERTICAL);
-        strip.setPadding(
-                Ui.dp(this, 14),
-                Ui.dp(this, 11),
-                Ui.dp(this, 14),
-                Ui.dp(this, 11)
-        );
-        strip.setBackground(
-                Ui.roundedStroke(
-                        Color.rgb(255, 252, 241),
-                        Color.rgb(246, 211, 94),
-                        1,
-                        16,
-                        this
-                )
-        );
-
-        TextView text =
-                Ui.text(
-                        this,
-                        "Livraison offerte dès 100 € d’achats",
-                        13,
-                        Ui.NAVY,
-                        true
-                );
-        strip.addView(text);
-
-        LinearLayout.LayoutParams params =
-                new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                );
-        params.topMargin = Ui.dp(this, 12);
-        content.addView(strip, params);
-    }
-
     private View space(int dp) {
         View view = new View(this);
         view.setLayoutParams(
@@ -2629,14 +2590,38 @@ public class MainActivity extends Activity {
         return box;
     }
 
-    private void openWeb(String url, String title) {
-        if (url == null || url.isEmpty()) return;
+    private void openWeb(
+            String url,
+            String title
+    ) {
+        if (url == null ||
+                url.trim().isEmpty()) {
+            return;
+        }
 
-        Intent intent =
-                new Intent(this, WebActivity.class);
-        intent.putExtra(WebActivity.EXTRA_URL, url);
-        intent.putExtra(WebActivity.EXTRA_TITLE, title);
-        startActivity(intent);
+        try {
+            Intent intent =
+                    new Intent(
+                            this,
+                            WebActivity.class
+                    );
+
+            intent.putExtra(
+                    WebActivity.EXTRA_URL,
+                    url
+            );
+
+            intent.putExtra(
+                    WebActivity.EXTRA_TITLE,
+                    title
+            );
+
+            startActivity(intent);
+
+        } catch (Throwable ignored) {
+            // Une erreur d'ouverture d'une page Web ne doit jamais
+            // faire tomber l'écran natif principal.
+        }
     }
 
     private void hideKeyboard() {

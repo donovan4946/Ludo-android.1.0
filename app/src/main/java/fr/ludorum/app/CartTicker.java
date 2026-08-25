@@ -71,7 +71,8 @@ final class CartTicker extends FrameLayout {
         loading = true;
         lastRefreshAt = now;
 
-        CartService.getProductsTtc(
+        try {
+            CartService.getProductsTtc(
                 new CartService.AmountCallback() {
                     @Override
                     public void onResult(
@@ -81,19 +82,38 @@ final class CartTicker extends FrameLayout {
                     ) {
                         loading = false;
 
-                        text.setText(
-                                buildMessage(
-                                        Math.max(0L, minorAmount),
-                                        Math.max(0, minorUnit),
-                                        currencyCode
-                                )
-                        );
+                        try {
+                            if (!isAttachedToWindow()) {
+                                return;
+                            }
 
-                        text.setSelected(false);
-                        text.setSelected(true);
+                            text.setText(
+                                    buildMessage(
+                                            Math.max(
+                                                    0L,
+                                                    minorAmount
+                                            ),
+                                            Math.max(
+                                                    0,
+                                                    minorUnit
+                                            ),
+                                            currencyCode
+                                    )
+                            );
+
+                            text.setSelected(false);
+                            text.setSelected(true);
+
+                        } catch (Throwable ignored) {
+                            // Le ticker ne doit jamais impacter
+                            // le fonctionnement du panier.
+                        }
                     }
                 }
-        );
+            );
+        } catch (Throwable ignored) {
+            loading = false;
+        }
     }
 
     private String buildMessage(

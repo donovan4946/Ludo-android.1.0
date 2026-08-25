@@ -84,10 +84,6 @@ final class FavoriteStore {
         return result;
     }
 
-    synchronized int count() {
-        return getAll().size();
-    }
-
     private void save(List<Product> products) {
         JSONArray array = new JSONArray();
 

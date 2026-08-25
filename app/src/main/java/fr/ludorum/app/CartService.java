@@ -308,7 +308,7 @@ final class CartService {
             );
             connection.setRequestProperty(
                     "User-Agent",
-                    "LudorumAndroid/1.0.13"
+                    "LudorumAndroid/1.0.15"
             );
 
             if (cookies != null &&
@@ -455,7 +455,7 @@ final class CartService {
             );
             connection.setRequestProperty(
                     "User-Agent",
-                    "LudorumAndroid/1.0.13"
+                    "LudorumAndroid/1.0.15"
             );
 
             if (cookies != null &&
@@ -665,7 +665,7 @@ final class CartService {
                 );
                 connection.setRequestProperty(
                         "User-Agent",
-                        "LudorumAndroid/1.0.13"
+                        "LudorumAndroid/1.0.15"
                 );
 
                 if (cookies != null &&
@@ -775,57 +775,6 @@ final class CartService {
         }
     }
 
-    private static int verifyCartCount(
-            String cookies
-    ) {
-        HttpURLConnection connection = null;
-
-        try {
-            connection =
-                    (HttpURLConnection)
-                            new URL(CART_API)
-                                    .openConnection();
-
-            connection.setConnectTimeout(9000);
-            connection.setReadTimeout(12000);
-            connection.setRequestMethod("GET");
-            connection.setRequestProperty("Accept", "application/json");
-            connection.setRequestProperty("User-Agent", "LudorumAndroid/1.0.13");
-
-            if (cookies != null &&
-                    !cookies.trim().isEmpty()) {
-                connection.setRequestProperty(
-                        "Cookie",
-                        cookies
-                );
-            }
-
-            int status =
-                    connection.getResponseCode();
-
-            if (status < 200 || status >= 300) {
-                return -1;
-            }
-
-            JSONObject cart =
-                    new JSONObject(
-                            read(
-                                    connection.getInputStream()
-                            )
-                    );
-
-            return cart.optInt("items_count", -1);
-
-        } catch (Exception ignored) {
-            return -1;
-
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
-    }
-
     private static List<String> collectSetCookies(
             Map<String, List<String>> headers
     ) {
@@ -854,44 +803,6 @@ final class CartService {
         }
 
         return result;
-    }
-
-    private static String mergeCookies(
-            String existing,
-            List<String> setCookies
-    ) {
-        StringBuilder result =
-                new StringBuilder();
-
-        if (existing != null &&
-                !existing.trim().isEmpty()) {
-            result.append(
-                    existing.trim()
-            );
-        }
-
-        for (String raw : setCookies) {
-            if (raw == null ||
-                    raw.trim().isEmpty()) {
-                continue;
-            }
-
-            String pair =
-                    raw.split(";", 2)[0]
-                            .trim();
-
-            if (pair.isEmpty()) {
-                continue;
-            }
-
-            if (result.length() > 0) {
-                result.append("; ");
-            }
-
-            result.append(pair);
-        }
-
-        return result.toString();
     }
 
     private static String read(

@@ -63,7 +63,7 @@ public class WebActivity extends Activity {
         super.onCreate(state);
         try {
             boot(state);
-        } catch (Exception error) {
+        } catch (Throwable error) {
             showStartupError(error);
         }
     }
@@ -219,7 +219,9 @@ public class WebActivity extends Activity {
 
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
+        try {
+            settings.setDatabaseEnabled(true);
+        } catch (Throwable ignored) {}
         settings.setLoadsImagesAutomatically(true);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
@@ -239,7 +241,12 @@ public class WebActivity extends Activity {
         settings.setMediaPlaybackRequiresUserGesture(true);
 
         web.setBackgroundColor(Color.WHITE);
-        web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        try {
+            web.setLayerType(
+                    View.LAYER_TYPE_HARDWARE,
+                    null
+            );
+        } catch (Throwable ignored) {}
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setVerticalScrollBarEnabled(false);
         web.setHorizontalScrollBarEnabled(false);
@@ -258,12 +265,17 @@ public class WebActivity extends Activity {
 
         settings.setUserAgentString(
                 settings.getUserAgentString() +
-                " LudorumAndroid/1.0.13"
+                " LudorumAndroid/1.0.15"
         );
 
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
-        cookies.setAcceptThirdPartyCookies(web, true);
+        try {
+            cookies.setAcceptThirdPartyCookies(
+                    web,
+                    true
+            );
+        } catch (Throwable ignored) {}
 
         web.addJavascriptInterface(
                 new AppBridge(),
@@ -541,6 +553,49 @@ public class WebActivity extends Activity {
                 value.contains("/panier") ||
                 value.contains("/commande")
         );
+    }
+
+    private void safeRefreshTicker(
+            boolean force,
+            long delayMs
+    ) {
+        if (cartTicker == null) {
+            return;
+        }
+
+        Runnable action =
+                () -> {
+                    try {
+                        if (cartTicker != null &&
+                                !isFinishing() &&
+                                !isDestroyed()) {
+                            cartTicker.refresh(force);
+                        }
+                    } catch (Throwable ignored) {
+                        // Le bandeau est décoratif :
+                        // aucune erreur ne doit pouvoir fermer l'app.
+                    }
+                };
+
+        if (delayMs > 0L) {
+            cartTicker.postDelayed(
+                    action,
+                    delayMs
+            );
+        } else {
+            action.run();
+        }
+    }
+
+    private void safeApplyAppPolish(
+            WebView view
+    ) {
+        try {
+            applyAppPolish(view);
+        } catch (Throwable ignored) {
+            // Le skin Ludorum améliore la page, mais le panier brut
+            // doit rester accessible si le skin rencontre une erreur.
+        }
     }
 
     private void applyAppPolish(WebView view) {
@@ -1050,16 +1105,14 @@ public class WebActivity extends Activity {
     private final class AppBridge {
         @JavascriptInterface
         public void cartChanged() {
-            runOnUiThread(
-                    () -> {
-                        if (cartTicker == null) return;
-
-                        cartTicker.postDelayed(
-                                () -> cartTicker.refresh(true),
-                                850
-                        );
-                    }
-            );
+            try {
+                runOnUiThread(
+                        () -> safeRefreshTicker(
+                                true,
+                                850L
+                        )
+                );
+            } catch (Throwable ignored) {}
         }
     }
 
@@ -1116,51 +1169,84 @@ public class WebActivity extends Activity {
                 WebView view,
                 String url
         ) {
-            // Skin Ludorum injecté dès le premier affichage visible :
-            // le panier paraît chargé plus rapidement.
-            applyAppPolish(view);
+            try {
+                // Le contenu est déjà visible avant d'activer les fonctions
+                // secondaires. En cas de souci, le panier reste accessible.
+                safeApplyAppPolish(view);
+                safeRefreshTicker(
+                        false,
+                        500L
+                );
+            } catch (Throwable ignored) {}
 
-            if (cartTicker != null) {
-                cartTicker.refresh();
-            }
-
-            super.onPageCommitVisible(view, url);
+            try {
+                super.onPageCommitVisible(
+                        view,
+                        url
+                );
+            } catch (Throwable ignored) {}
         }
 
         @Override
-        public void onPageFinished(WebView view, String url) {
-            CookieManager.getInstance().flush();
-            progress.setVisibility(View.GONE);
-
-            Uri current = null;
+        public void onPageFinished(
+                WebView view,
+                String url
+        ) {
             try {
-                current = Uri.parse(url);
-            } catch (Exception ignored) {}
+                CookieManager.getInstance().flush();
 
-            if (current != null &&
-                    routeCommerceToNative(current)) {
-                return;
+                if (progress != null) {
+                    progress.setVisibility(
+                            View.GONE
+                    );
+                }
+
+                Uri current = null;
+
+                try {
+                    current =
+                            Uri.parse(url);
+                } catch (Throwable ignored) {}
+
+                if (current != null &&
+                        routeCommerceToNative(current)) {
+                    return;
+                }
+
+                if ((cartMode &&
+                        current != null &&
+                        !isCartAllowed(current))
+                        || (accountMode &&
+                        current != null &&
+                        !isAccountAllowed(current))) {
+                    returnToNativeHome();
+                    return;
+                }
+
+                updateJourneyMode(url);
+                updateBottomNav(url);
+
+                // La page fonctionne même si le skin échoue.
+                safeApplyAppPolish(view);
+
+                // Le bandeau ne se rafraîchit qu'après la page,
+                // et avec un léger délai.
+                safeRefreshTicker(
+                        false,
+                        650L
+                );
+
+            } catch (Throwable ignored) {
+                // Ne jamais faire tomber l'Activity à cause
+                // d'un traitement post-chargement.
             }
 
-            if ((cartMode &&
-                    current != null &&
-                    !isCartAllowed(current))
-                    || (accountMode &&
-                    current != null &&
-                    !isAccountAllowed(current))) {
-                returnToNativeHome();
-                return;
-            }
-
-            updateJourneyMode(url);
-            updateBottomNav(url);
-            applyAppPolish(view);
-
-            if (cartTicker != null) {
-                cartTicker.refresh();
-            }
-
-            super.onPageFinished(view, url);
+            try {
+                super.onPageFinished(
+                        view,
+                        url
+                );
+            } catch (Throwable ignored) {}
         }
     }
 
@@ -1247,7 +1333,7 @@ public class WebActivity extends Activity {
         }
     }
 
-    private void showStartupError(Exception error) {
+    private void showStartupError(Throwable error) {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setGravity(Gravity.CENTER);
@@ -1332,12 +1418,17 @@ public class WebActivity extends Activity {
     protected void onResume() {
         super.onResume();
 
-        if (web != null) {
-            web.onResume();
-        }
-
-        if (cartTicker != null) {
-            cartTicker.refresh(true);
+        // IMPORTANT :
+        // onResume doit rester extrêmement léger.
+        // On ne touche plus au réseau panier ici : la page WebView
+        // doit d'abord pouvoir s'afficher sans qu'un service secondaire
+        // puisse faire tomber l'Activity.
+        try {
+            if (web != null) {
+                web.onResume();
+            }
+        } catch (Throwable ignored) {
+            // Le WebView restera piloté par son chargement normal.
         }
     }
 
