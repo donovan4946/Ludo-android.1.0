@@ -88,17 +88,39 @@ final class CartService {
         // Protection supplémentaire contre deux vues du même produit
         // cliquées pendant que la première requête est encore en cours.
         if (!ADDING_PRODUCTS.add(productId)) {
+            MAIN.post(
+                    () -> callback.onError(
+                            "Ajout déjà en cours."
+                    )
+            );
             return;
         }
 
         final int requestedQuantity =
                 Math.max(1, quantity);
 
-        CookieManager cookieManager =
-                CookieManager.getInstance();
+        final CookieManager cookieManager;
+        final String cookies;
 
-        String cookies =
-                cookieManager.getCookie(BASE);
+        try {
+            cookieManager =
+                    CookieManager.getInstance();
+
+            cookies =
+                    cookieManager.getCookie(BASE);
+
+        } catch (Throwable error) {
+            ADDING_PRODUCTS.remove(
+                    productId
+            );
+
+            MAIN.post(
+                    () -> callback.onError(
+                            "Session panier indisponible."
+                    )
+            );
+            return;
+        }
 
         EXECUTOR.execute(() -> {
             try {
@@ -308,7 +330,7 @@ final class CartService {
             );
             connection.setRequestProperty(
                     "User-Agent",
-                    "LudorumAndroid/1.0.15"
+                    "LudorumAndroid/1.0.16"
             );
 
             if (cookies != null &&
@@ -455,7 +477,7 @@ final class CartService {
             );
             connection.setRequestProperty(
                     "User-Agent",
-                    "LudorumAndroid/1.0.15"
+                    "LudorumAndroid/1.0.16"
             );
 
             if (cookies != null &&
@@ -665,7 +687,7 @@ final class CartService {
                 );
                 connection.setRequestProperty(
                         "User-Agent",
-                        "LudorumAndroid/1.0.15"
+                        "LudorumAndroid/1.0.16"
                 );
 
                 if (cookies != null &&

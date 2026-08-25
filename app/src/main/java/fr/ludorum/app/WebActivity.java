@@ -265,7 +265,7 @@ public class WebActivity extends Activity {
 
         settings.setUserAgentString(
                 settings.getUserAgentString() +
-                " LudorumAndroid/1.0.15"
+                " LudorumAndroid/1.0.16"
         );
 
         CookieManager cookies = CookieManager.getInstance();

@@ -2455,82 +2455,74 @@ public class MainActivity extends Activity {
         }
 
         if (button != null) {
-            Object currentTag =
-                    button.getTag(
-                            android.R.id.custom
-                    );
-
-            if (currentTag instanceof Integer &&
-                    ((Integer) currentTag) ==
-                    product.id) {
-                return;
-            }
-
-            button.setTag(
-                    android.R.id.custom,
-                    product.id
-            );
-
+            // Le bouton est désactivé immédiatement.
+            // CartService possède déjà le verrou anti-double-ajout.
+            // Aucun setTag(int, ...) avec un ID framework Android.
             button.setEnabled(false);
             button.setAlpha(.72f);
             button.setText("Ajout…");
         }
 
-        CartService.addSimpleProduct(
-                product.id,
-                1,
-                new CartService.Callback() {
-                    @Override
-                    public void onSuccess(
-                            int itemsCount
-                    ) {
-                        if (button != null) {
-                            button.setText("✓ Ajouté");
-                            button.setAlpha(1f);
-                            button.setTag(
-                                    android.R.id.custom,
-                                    null
-                            );
+        try {
+            CartService.addSimpleProduct(
+                    product.id,
+                    1,
+                    new CartService.Callback() {
+                        @Override
+                        public void onSuccess(
+                                int itemsCount
+                        ) {
+                            if (button != null) {
+                                button.setText("✓ Ajouté");
+                                button.setAlpha(1f);
+                                button.postDelayed(
+                                        () -> {
+                                            button.setText(
+                                                    "Ajouter au panier"
+                                            );
+                                            button.setEnabled(true);
+                                        },
+                                        750
+                                );
+                            }
 
-                            button.postDelayed(
-                                    () -> {
-                                        button.setText(
+                            if (cartTicker != null) {
+                                cartTicker.refresh(true);
+                            }
+                        }
+
+                        @Override
+                        public void onError(
+                                String message
+                        ) {
+                            if (button != null) {
+                                button.setText("Réessayer");
+                                button.setEnabled(true);
+                                button.setAlpha(1f);
+                                button.postDelayed(
+                                        () -> button.setText(
                                                 "Ajouter au panier"
-                                        );
-                                        button.setEnabled(true);
-                                    },
-                                    750
-                            );
-                        }
-
-                        if (cartTicker != null) {
-                            cartTicker.refresh(true);
+                                        ),
+                                        1200
+                                );
+                            }
                         }
                     }
+            );
+        } catch (Throwable error) {
+            if (button != null) {
+                button.setText("Réessayer");
+                button.setEnabled(true);
+                button.setAlpha(1f);
 
-                    @Override
-                    public void onError(
-                            String message
-                    ) {
-                        if (button != null) {
-                            button.setText("Réessayer");
-                            button.setEnabled(true);
-                            button.setAlpha(1f);
-                            button.setTag(
-                                    android.R.id.custom,
-                                    null
-                            );
-
-                            button.postDelayed(
-                                    () -> button.setText(
-                                            "Ajouter au panier"
-                                    ),
-                                    1200
-                            );
-                        }
-                    }
-                }
-        );
+                button.postDelayed(
+                        () -> button.setText(
+                                "Ajouter au panier"
+                        ),
+                        1200
+                );
+            }
+        }
     }
 
     private TextView messageView(String message) {
